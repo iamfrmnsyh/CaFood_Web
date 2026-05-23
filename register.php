@@ -469,7 +469,7 @@
             </form>
             
             <div class="login-link">
-                Already have an account? <a href="login.html">Sign In</a>
+<a href="login.php">Sign In</a>
             </div>
         </div>
     </div>
@@ -700,7 +700,7 @@
                 showToast('✅ Account created successfully! Redirecting to login...', 'success');
                 
                 setTimeout(() => {
-                    window.location.href = 'login.html';
+window.location.href = 'login.php';
                 }, 2000);
                 
             } catch (error) {

@@ -388,7 +388,7 @@
         
         async function loadCart() {
             if (!currentUser) {
-                window.location.href = 'login.html';
+                window.location.href = 'login.php';
                 return;
             }
             
@@ -398,7 +398,7 @@
                 const snapshot = await getDocs(q);
                 
                 if (snapshot.empty) {
-                    window.location.href = 'keranjang.html';
+                    window.location.href = 'keranjang.php';
                     return;
                 }
                 
@@ -543,7 +543,7 @@
                 showToast('✅ Pesanan berhasil dibuat!');
                 
                 setTimeout(() => {
-                    window.location.href = 'status-pesanan.html';
+                    window.location.href = 'status-pesanan.php';
                 }, 1500);
             } catch (error) {
                 console.error("Error saving order:", error);
@@ -593,7 +593,7 @@
                 currentUser = user;
                 await loadCart();
             } else {
-                window.location.href = 'login.html';
+                window.location.href = 'login.php';
             }
         });
     </script>

@@ -235,7 +235,7 @@
         import { db, auth, collection, doc, getDocs, addDoc, updateDoc, deleteDoc, signOut } from './js/firebase-config.js';
 
         const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
-        if (!currentUser || currentUser.role !== 'admin') window.location.href = 'login.html';
+window.location.href = 'login.php';
 
         let allStands = [], allMenus = [], allOrders = [], allUsers = [], selectedStandId = null;
 

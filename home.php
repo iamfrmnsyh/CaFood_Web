@@ -471,7 +471,8 @@ navigateTo('status-pesanan.php')
 navigateTo('keranjang.php')
                 <i class="fas fa-shopping-cart"></i> <span>Keranjang</span>
             </div>
-            <div class="side-menu-item" onclick="navigateTo('profile.html')">
+            <div class="side-menu-item" onclick="navigateTo('profile.php')">
+
                 <i class="fas fa-user"></i> <span>Profil Saya</span>
             </div>
             <div class="side-menu-item" id="dashboardLink" style="display: none;" onclick="navigateToDashboard()">
@@ -614,7 +615,7 @@ navigateTo('keranjang.php')
                             <span class="meta-item"><i class="fas fa-clock"></i> ${stand.estimatedTime || '15-20 min'}</span>
                             <span class="meta-item"><i class="fas fa-truck"></i> ${stand.deliveryFee || 'Free'}</span>
                             <span class="meta-item ${stand.status === 'Open' ? 'status-open' : 'status-closed'}">
-                                <i class="fas fa-circle"></i> ${stand.status || 'Open'}
+                        <i class="fas fa-circle"></i> ${stand.status || 'Open'}
                             </span>
                         </div>
                     </div>
@@ -622,15 +623,17 @@ navigateTo('keranjang.php')
             `).join('');
         }
         
+        
         function showsLoading(show) {
             if (show) {
                 standsGrid.innerHTML = `<div class="loading"><div class="spinner"></div><div>Memuat stand...</div></div>`;
             }
         }
         
-        window.goToStand = function(standId) {
-            window.location.href = `menu-stand.html?id=${standId}`;
+            window.goToStand = function(standId) {
+            window.location.href = `menu-stand.php?id=${standId}`;
         };
+
         
         window.navigateTo = function(url) {
             toggleMenu();
@@ -704,7 +707,7 @@ window.location.href = 'dashboard-admin.php';
                     await signOut(auth);
                     localStorage.removeItem('currentUser');
                     showToast('Logout berhasil!');
-                    setTimeout(() => { window.location.href = 'login.html'; }, 1500);
+            window.location.href = 'login.php';
                 } catch (error) {
                     showToast('Gagal logout!', true);
                 }

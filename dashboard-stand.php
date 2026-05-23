@@ -621,21 +621,20 @@
 
         async function loadStand() {
             if (!currentUser) return;
-            
+
             try {
                 const standsRef = collection(db, "stands");
                 const q = query(standsRef, where("ownerId", "==", currentUser.uid));
                 const snapshot = await getDocs(q);
-                
+
                 if (!snapshot.empty) {
                     const standDoc = snapshot.docs[0];
                     currentStand = { id: standDoc.id, ...standDoc.data() };
-                    
+
                     const standName = currentStand.nama || currentStand.name || 'Stand Saya';
                     document.getElementById('standNameSidebar').textContent = standName;
                     document.getElementById('standNameHeader').textContent = standName;
-                    
-                    console.log("Stand found:", currentStand);
+
                     await loadMenus();
                     await loadOrders();
                     updateDashboard();
@@ -649,25 +648,22 @@
             }
         }
 
-        // PERBAIKAN: Baca field yang benar dari Firestore
         async function loadMenus() {
             if (!currentStand) return;
-            
+
             try {
                 const menusRef = collection(db, "menus");
                 const q = query(menusRef, where("standId", "==", currentStand.id));
                 const snapshot = await getDocs(q);
-                allMenus = snapshot.docs.map(doc => ({ 
-                    id: doc.id, 
+                allMenus = snapshot.docs.map(doc => ({
+                    id: doc.id,
                     ...doc.data(),
-                    // 🔥 PERBAIKAN: Baca field yang sesuai dengan Firestore
                     name: doc.data().nama || doc.data().name || 'Menu',
                     price: doc.data().harga || doc.data().price || 0,
                     description: doc.data().deskripsi || doc.data().description || '',
                     image: doc.data().gambar || doc.data().image || doc.data().gambarUrl || null,
                     available: doc.data().status || doc.data().available || 'Tersedia'
                 }));
-                console.log("Menus loaded:", allMenus);
                 renderMenus();
             } catch (error) {
                 console.error("Error loading menus:", error);
@@ -676,13 +672,12 @@
 
         async function loadOrders() {
             if (!currentStand) return;
-            
+
             try {
                 const ordersRef = collection(db, "orders");
                 const q = query(ordersRef, where("standId", "==", currentStand.id));
                 const snapshot = await getDocs(q);
                 allOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                console.log("Orders loaded:", allOrders);
                 renderOrders();
                 updateDashboard();
             } catch (error) {
@@ -693,17 +688,17 @@
         function renderMenus() {
             const container = document.getElementById('menusList');
             if (!container) return;
-            
+
             if (allMenus.length === 0) {
                 container.innerHTML = '<div style="text-align:center; padding:40px;">Belum ada menu. Klik "Tambah Menu" untuk menambahkan.</div>';
                 return;
             }
-            
+
             container.innerHTML = allMenus.map(menu => `
                 <div class="menu-card">
                     <div class="menu-image">
-                        ${menu.image ? 
-                            `<img src="${menu.image}" alt="${menu.name}" onerror="this.parentElement.innerHTML='<div class=\'menu-image-placeholder\'>🍽️</div>'">` : 
+                        ${menu.image ?
+                            `<img src="${menu.image}" alt="${menu.name}" onerror="this.parentElement.innerHTML='<div class=\\'menu-image-placeholder\\'>🍽️</div>'">` :
                             '<div class="menu-image-placeholder">🍽️</div>'
                         }
                     </div>
@@ -724,12 +719,12 @@
         function renderOrders() {
             const container = document.getElementById('ordersList');
             if (!container) return;
-            
+
             if (allOrders.length === 0) {
                 container.innerHTML = '<div style="text-align:center; padding:40px;">Belum ada pesanan</div>';
                 return;
             }
-            
+
             const statusLabels = {
                 'pending': 'Menunggu',
                 'confirmed': 'Dikonfirmasi',
@@ -737,8 +732,10 @@
                 'ready': 'Siap Diambil',
                 'completed': 'Selesai'
             };
-            
-            container.innerHTML = allOrders.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).map(order => `
+
+            container.innerHTML = allOrders
+                .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt))
+                .map(order => `
                 <div class="order-card">
                     <div class="order-header">
                         <div class="order-number">${order.orderNumber || 'ORD-XXXX'}</div>
@@ -756,7 +753,7 @@
                 </div>
             `).join('');
         }
-        
+
         function getOrderActions(order) {
             switch(order.status) {
                 case 'pending':
@@ -771,7 +768,7 @@
                     return '';
             }
         }
-        
+
         window.updateOrderStatus = async function(orderId, newStatus) {
             try {
                 const orderRef = doc(db, "orders", orderId);
@@ -782,23 +779,22 @@
                 showToast('Gagal mengupdate status', true);
             }
         };
-        
+
         function updateDashboard() {
             if (!currentStand) return;
-            
+
             const today = new Date().toISOString().split('T')[0];
             const todayOrders = allOrders.filter(o => o.createdAt?.split('T')[0] === today);
             const totalRevenue = allOrders.reduce((sum, o) => sum + (o.total || 0), 0);
-            const todayRevenue = todayOrders.reduce((sum, o) => sum + (o.total || 0), 0);
             const pendingOrders = allOrders.filter(o => o.status === 'pending').length;
-            
+
             document.getElementById('statsGrid').innerHTML = `
                 <div class="stat-card">
                     <div><div class="stat-number">${todayOrders.length}</div><div class="stat-label">Order Hari Ini</div></div>
                     <div class="stat-icon">📦</div>
                 </div>
                 <div class="stat-card">
-                    <div><div class="stat-number">${formatRupiah(todayRevenue)}</div><div class="stat-label">Pendapatan Hari Ini</div></div>
+                    <div><div class="stat-number">${formatRupiah(todayOrders.reduce((sum, o) => sum + (o.total || 0), 0))}</div><div class="stat-label">Pendapatan Hari Ini</div></div>
                     <div class="stat-icon">💰</div>
                 </div>
                 <div class="stat-card">
@@ -810,13 +806,15 @@
                     <div class="stat-icon">🍽️</div>
                 </div>
             `;
-            
-            const recentOrders = [...allOrders].sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0,5);
-            const statusLabels = { 'pending': 'Menunggu', 'confirmed': 'Dikonfirmasi', 'processing': 'Diproses', 'ready': 'Siap Diambil', 'completed': 'Selesai' };
-            
+
+            const recentOrders = [...allOrders]
+                .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt))
+                .slice(0,5);
+
             if (recentOrders.length === 0) {
                 document.getElementById('recentOrders').innerHTML = '<div style="text-align:center; padding:40px;">Belum ada pesanan</div>';
             } else {
+                const statusLabels = { 'pending': 'Menunggu', 'confirmed': 'Dikonfirmasi', 'processing': 'Diproses', 'ready': 'Siap Diambil', 'completed': 'Selesai' };
                 document.getElementById('recentOrders').innerHTML = recentOrders.map(order => `
                     <div class="order-card">
                         <div class="order-header">
@@ -828,10 +826,10 @@
                     </div>
                 `).join('');
             }
-            
+
             const completedOrders = allOrders.filter(o => o.status === 'completed');
             const totalCompletedRevenue = completedOrders.reduce((sum, o) => sum + (o.total || 0), 0);
-            
+
             document.getElementById('reportStats').innerHTML = `
                 <div class="report-card"><div class="report-value">${allOrders.length}</div><div class="report-label">Total Pesanan</div></div>
                 <div class="report-card"><div class="report-value">${completedOrders.length}</div><div class="report-label">Pesanan Selesai</div></div>
@@ -839,7 +837,7 @@
                 <div class="report-card"><div class="report-value">${formatRupiah(totalCompletedRevenue)}</div><div class="report-label">Pendapatan Selesai</div></div>
             `;
         }
-        
+
         window.editMenu = function(id) {
             const menu = allMenus.find(m => m.id === id);
             if (menu) {
@@ -848,7 +846,7 @@
                 document.getElementById('menuPrice').value = menu.price;
                 document.getElementById('menuDesc').value = menu.description || '';
                 document.getElementById('menuAvailable').value = menu.available || 'Tersedia';
-                
+
                 if (menu.image) {
                     document.getElementById('menuImagePreview').innerHTML = `<img src="${menu.image}">`;
                     document.getElementById('menuImageBase64').value = menu.image;
@@ -856,12 +854,12 @@
                     document.getElementById('menuImagePreview').innerHTML = '<div class="menu-image-placeholder">🍽️</div>';
                     document.getElementById('menuImageBase64').value = '';
                 }
-                
+
                 document.getElementById('menuModalTitle').innerText = 'Edit Menu';
                 openMenuModal();
             }
         };
-        
+
         window.deleteMenu = async function(id) {
             if (confirm('Yakin hapus menu ini?')) {
                 try {
@@ -873,7 +871,7 @@
                 }
             }
         };
-        
+
         window.openMenuModal = function() {
             document.getElementById('menuModal').style.display = 'flex';
             if (!document.getElementById('menuId').value) {
@@ -885,15 +883,15 @@
                 document.getElementById('menuImage').value = '';
             }
         };
-        
+
         window.closeModal = function(id) { document.getElementById(id).style.display = 'none'; };
-        
+
         document.getElementById('menuForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            
+
             const id = document.getElementById('menuId').value;
             const imageBase64 = document.getElementById('menuImageBase64').value;
-            
+
             const menuData = {
                 standId: currentStand.id,
                 nama: document.getElementById('menuName').value,
@@ -902,11 +900,11 @@
                 status: document.getElementById('menuAvailable').value,
                 updatedAt: new Date().toISOString()
             };
-            
+
             if (imageBase64) {
                 menuData.gambar = imageBase64;
             }
-            
+
             try {
                 if (id) {
                     await updateDoc(doc(db, "menus", id), menuData);
@@ -922,18 +920,18 @@
                 showToast('Gagal menyimpan menu', true);
             }
         });
-        
+
         document.querySelectorAll('.menu-item').forEach(item => {
             item.addEventListener('click', async () => {
                 document.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active'));
                 item.classList.add('active');
                 const tab = item.dataset.tab;
-                
+
                 document.getElementById('dashboardTab').style.display = 'none';
                 document.getElementById('menusTab').style.display = 'none';
                 document.getElementById('ordersTab').style.display = 'none';
                 document.getElementById('reportsTab').style.display = 'none';
-                
+
                 if (tab === 'dashboard') {
                     document.getElementById('dashboardTab').style.display = 'block';
                     await loadOrders();
@@ -951,7 +949,7 @@
                 }
             });
         });
-        
+
         window.handleLogout = async function() {
             if (confirm('Apakah Anda yakin ingin logout?')) {
                 try {
@@ -959,23 +957,23 @@
                     localStorage.removeItem('currentUser');
                     showToast('Logout berhasil');
                     setTimeout(() => {
-                        window.location.href = 'login.html';
+                        window.location.href = 'login.php';
                     }, 1000);
                 } catch (error) {
-                    window.location.href = 'login.html';
+                    window.location.href = 'login.php';
                 }
             }
         };
-        
+
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 currentUser = user;
-                console.log("User logged in:", currentUser.uid);
                 await loadStand();
             } else {
-                window.location.href = 'login.html';
+                window.location.href = 'login.php';
             }
         });
     </script>
 </body>
 </html>
+

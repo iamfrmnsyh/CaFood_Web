@@ -396,7 +396,7 @@
             </button>
             
             <div class="signup-link">
-                Belum punya akun? <a href="register.html">Sign Up</a>
+Belum punya akun? <a href="register.php">Sign Up</a>
             </div>
         </div>
     </div>

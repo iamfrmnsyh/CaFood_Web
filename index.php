@@ -321,7 +321,7 @@
             splashContainer.style.opacity = '0';
             
             setTimeout(() => {
-                window.location.href = 'login.html';
+window.location.href = 'login.php';
             }, 500);
         }, 3000);
     </script>

@@ -545,12 +545,13 @@
         }
         
         function orderAgain() {
-            window.location.href = 'home.html';
+            window.location.href = 'home.php';
         }
         
         function goToHome() {
-            window.location.href = 'home.html';
+            window.location.href = 'home.php';
         }
+
         
         function showToast(message, isError = false) {
             const existingToast = document.querySelector('.toast');
@@ -597,7 +598,7 @@
                 startAutoRefresh();
             } else {
                 // Not logged in, redirect to login
-                window.location.href = 'login.html';
+window.location.href = 'login.php';
             }
         });
         

@@ -402,14 +402,9 @@
     </div>
     
     <script type="module">
-        import { 
-            db, auth,
-            doc, getDoc, setDoc,
-            signInWithEmailAndPassword, 
-            sendPasswordResetEmail,
-            GoogleAuthProvider,
-            signInWithPopup
-        } from './js/firebase-config.js';
+        import './js/api-client.js';
+        const { login } = window.API;
+
         
         const emailInput = document.getElementById('email');
         const passwordInput = document.getElementById('password');
@@ -478,135 +473,42 @@
             return isValid;
         }
         
-        // Fungsi untuk menyimpan atau update user ke Firestore setelah login
-        async function handleUserAfterLogin(user, isGoogleLogin = false) {
-            let userName = user.displayName || user.email.split('@')[0];
-            let userRole = 'customer';
-            let standId = null;
-            let standName = null;
-            
-            try {
-                const userDoc = await getDoc(doc(db, "users", user.uid));
-                if (userDoc.exists()) {
-                    const userData = userDoc.data();
-                    userName = userData.name || userData.full_name || userName;
-                    userRole = userData.role || 'customer';
-                    standId = userData.standId || null;
-                    standName = userData.standName || null;
-                } else if (isGoogleLogin) {
-                    // Jika user baru login dengan Google, buat dokumen di Firestore
-                    await setDoc(doc(db, "users", user.uid), {
-                        uid: user.uid,
-                        name: userName,
-                        email: user.email,
-                        phone: user.phoneNumber || '',
-                        role: 'customer',
-                        photoURL: user.photoURL || '',
-                        createdAt: new Date().toISOString(),
-                        isActive: true
-                    });
-                    userRole = 'customer';
-                }
-            } catch (err) {
-                console.log("Firestore error:", err);
-            }
-            
+        function redirectByRole(role) {
+            if (role === 'customer') window.location.href = 'home.php';
+            else if (role === 'stand' || role === 'operator') window.location.href = 'dashboard-stand.php';
+            else if (role === 'admin') window.location.href = 'dashboard-admin.php';
+            else window.location.href = 'home.php';
+        }
+
+        function setSession(user) {
             const userSession = {
-                uid: user.uid,
-                name: userName,
+                id: user.id,
+                uid: user.id,
+                name: user.name,
                 email: user.email,
-                role: userRole,
-                standId: standId,
-                standName: standName,
-                photoURL: user.photoURL || null
+                role: user.role || 'customer'
             };
             localStorage.setItem('currentUser', JSON.stringify(userSession));
-            
-            showToast(`✅ Selamat datang, ${userName}!`, 'success');
-            
-            setTimeout(() => {
-                if (userRole === 'customer') {
-                    window.location.href = 'home.html';
-                } else if (userRole === 'stand' || userRole === 'operator') {
-                    window.location.href = 'dashboard-stand.html';
-                } else if (userRole === 'admin') {
-                    window.location.href = 'dashboard-admin.html';
-                } else {
-                    window.location.href = 'home.html';
-                }
-            }, 1500);
+            showToast(`✅ Selamat datang, ${userSession.name}!`, 'success');
+            setTimeout(() => redirectByRole(userSession.role), 800);
         }
+
         
-        forgotBtn.addEventListener('click', async (e) => {
+        forgotBtn.addEventListener('click', (e) => {
             e.preventDefault();
-            const email = emailInput.value.trim();
-            
-            if (!email) {
-                showToast('❌ Masukkan email Anda dulu!', 'error');
-                return;
-            }
-            
-            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            if (!emailRegex.test(email)) {
-                showToast('❌ Format email tidak valid!', 'error');
-                return;
-            }
-            
-            const originalText = forgotBtn.innerHTML;
-            forgotBtn.innerHTML = '<span class="spinner"></span> Mengirim...';
-            forgotBtn.style.opacity = '0.7';
-            forgotBtn.style.pointerEvents = 'none';
-            
-            try {
-                await sendPasswordResetEmail(auth, email);
-                showToast(`✅ Email reset password telah dikirim ke ${email}`, 'success');
-                showToast('📧 Cek inbox atau folder spam Anda!', 'success');
-                emailInput.value = '';
-                passwordInput.value = '';
-            } catch (error) {
-                if (error.code === 'auth/user-not-found') {
-                    showToast('❌ Email tidak terdaftar! Silakan daftar terlebih dahulu.', 'error');
-                } else if (error.code === 'auth/invalid-email') {
-                    showToast('❌ Format email tidak valid!', 'error');
-                } else {
-                    showToast(`❌ Gagal mengirim email: ${error.message}`, 'error');
-                }
-            } finally {
-                forgotBtn.innerHTML = originalText;
-                forgotBtn.style.opacity = '1';
-                forgotBtn.style.pointerEvents = 'auto';
-            }
+            showToast('Fitur reset password belum tersedia (backend mode).', 'error');
         });
+
         
-        // ============ GOOGLE LOGIN ============
-        googleBtn.addEventListener('click', async () => {
-            googleBtn.disabled = true;
-            googleBtn.innerHTML = '<span class="spinner"></span> Memproses...';
-            
-            try {
-                const provider = new GoogleAuthProvider();
-                const result = await signInWithPopup(auth, provider);
-                const user = result.user;
-                console.log("Google login success:", user);
-                
-                await handleUserAfterLogin(user, true);
-                
-            } catch (error) {
-                console.error("Google login error:", error.code, error.message);
-                if (error.code === 'auth/popup-closed-by-user') {
-                    showToast('Login dibatalkan', 'error');
-                } else if (error.code === 'auth/account-exists-with-different-credential') {
-                    showToast('Akun sudah terdaftar dengan metode lain. Silakan login dengan email dan password.', 'error');
-                } else {
-                    showToast('❌ Gagal login dengan Google', 'error');
-                }
-                googleBtn.disabled = false;
-                googleBtn.innerHTML = '<i class="fab fa-google"></i> Lanjutkan dengan Google';
-            }
+        // Google login belum tersedia pada backend mode
+        googleBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            showToast('Google login belum tersedia (backend mode).', 'error');
         });
-        
+
         // ============ EMAIL/PASSWORD LOGIN ============
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
+
             e.preventDefault();
             
             if (!validateForm()) return;
@@ -620,28 +522,30 @@
             console.log("🔐 Login attempt:", { email });
             
             try {
-                const userCredential = await signInWithEmailAndPassword(auth, email, password);
-                const user = userCredential.user;
-                console.log("✅ Auth success:", user.uid);
-                
-                await handleUserAfterLogin(user, false);
+                const result = await login({ email, password });
+                if (result?.user) {
+                    setSession({
+                        id: result.user.id,
+                        name: result.user.name,
+                        email: result.user.email,
+                        role: result.user.role,
+                    });
+                } else {
+                    showToast(result?.error || 'Login gagal', 'error');
+                    loginBtn.disabled = false;
+                    loginBtn.innerHTML = 'Masuk';
+                    return;
+                }
+
                 
             } catch (error) {
-                console.error("❌ Login error:", error.code, error.message);
-                
-                if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-                    showToast('❌ Email atau password salah!', 'error');
-                } else if (error.code === 'auth/invalid-email') {
-                    showToast('❌ Format email tidak valid!', 'error');
-                } else if (error.code === 'auth/too-many-requests') {
-                    showToast('❌ Terlalu banyak percobaan. Coba lagi nanti!', 'error');
-                } else {
-                    showToast(`❌ Login gagal: ${error.message}`, 'error');
-                }
+                console.error('Login error:', error);
+                showToast('Login gagal. Periksa email/password.', 'error');
                 
                 loginBtn.disabled = false;
                 loginBtn.innerHTML = 'Masuk';
             }
+
         });
         
         emailInput.addEventListener('input', () => {

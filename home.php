@@ -512,7 +512,9 @@ navigateTo('keranjang.php')
     </div>
     
     <script type="module">
-        import { db, auth, collection, getDocs, query, where, signOut, onAuthStateChanged } from './js/firebase-config.js';
+        import './js/api-client.js';
+        const { getStands } = window.API;
+
         
         // ============ GLOBAL VARIABLES ============
         let allStands = [];
@@ -539,51 +541,36 @@ navigateTo('keranjang.php')
         
         // ============ LOAD CARTS COUNT FROM FIRESTORE ============
         async function updateCartCount() {
-            if (!currentUser) {
-                const cartCount = document.getElementById('cartCount');
-                if (cartCount) cartCount.textContent = "0";
-                return;
-            }
-            
-            try {
-                const cartsRef = collection(db, "carts");
-                const q = query(cartsRef, where("userId", "==", currentUser.uid));
-                const snapshot = await getDocs(q);
-                
-                let totalItems = 0;
-                snapshot.docs.forEach(doc => {
-                    totalItems += doc.data().quantity || 0;
-                });
-                
-                const cartCount = document.getElementById('cartCount');
-                if (cartCount) cartCount.textContent = totalItems;
-            } catch (error) {
-                console.error("Error loading cart count:", error);
-            }
+            const cart = JSON.parse(localStorage.getItem('cart') || '[]');
+            const totalItems = Array.isArray(cart) ? cart.reduce((sum, it) => sum + (it.quantity || 0), 0) : 0;
+            const cartCount = document.getElementById('cartCount');
+            if (cartCount) cartCount.textContent = String(totalItems);
         }
+
         
         // ============ LOAD STANDS ============
         async function loadStands() {
             try {
                 showsLoading(true);
-                const standsRef = collection(db, "stands");
-                const snapshot = await getDocs(standsRef);
-                
-                allStands = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data(),
-                    name: doc.data().nama || doc.data().name || 'No Name',
-                    description: doc.data().deskripsi || doc.data().description || 'Delicious food available',
-                    estimatedTime: doc.data().estimasiWaktu || doc.data().estimatedTime || '15-20 min',
-                    deliveryFee: doc.data().biayaPengiriman || doc.data().deliveryFee || 'Free',
-                    imageUrl: doc.data().gambarUrl || doc.data().imageUrl || null,
-                    rating: doc.data().rating || 4.5,
-                    status: doc.data().status || 'Open'
+            const result = await getStands();
+                const stands = Array.isArray(result) ? result : (result?.data || []);
+
+
+                allStands = stands.map(s => ({
+                    id: s.id,
+                    ...s,
+                    name: s.nama || s.name || 'No Name',
+                    description: s.deskripsi || s.description || 'Delicious food available',
+                    estimatedTime: s.estimasiWaktu || s.estimatedTime || s.estTime || '15-20 min',
+                    deliveryFee: s.biayaPengiriman || s.deliveryFee || 'Free',
+                    imageUrl: s.gambarUrl || s.imageUrl || s.image || null,
+                    rating: s.rating || 4.5,
+                    status: s.status || 'Open'
                 }));
-                
+
                 const activeStands = allStands.filter(s => s.status === 'Open').length;
                 standCountSpan.textContent = activeStands;
-                
+
                 renderStands();
                 showsLoading(false);
             } catch (error) {
@@ -591,6 +578,7 @@ navigateTo('keranjang.php')
                 standsGrid.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div>Gagal memuat data</div><div style="font-size:0.75rem; margin-top:8px;">${error.message}</div></div>`;
             }
         }
+
         
         function getFilteredStands() {
             let filtered = [...allStands];

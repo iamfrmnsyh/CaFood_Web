@@ -30,6 +30,11 @@ const API = {
   getMenu: (id) => apiFetch('menus', { id }),
   createMenu: (data) => apiFetch('menus', { method: 'POST', data }),
 
+  getStands: () => apiFetch('stands'),
+  getStand: (id) => apiFetch('stands', { id }),
+  createStand: (data) => apiFetch('stands', { method: 'POST', data }),
+
+
   register: (data) => apiFetch('users', { method: 'POST', action: 'register', data }),
   login: (data) => apiFetch('users', { method: 'POST', action: 'login', data }),
 

@@ -444,7 +444,7 @@
                 <div class="logo-text">CaFood</div>
             </div>
             <div class="header-right">
-                <div class="cart-icon" onclick="window.location.href='keranjang.html'">
+onclick="window.location.href='keranjang.php'
                     <i class="fas fa-shopping-bag"></i>
                     <span class="cart-count" id="cartCount">0</span>
                 </div>
@@ -462,13 +462,13 @@
             <p id="userNameDisplay">Selamat Datang!</p>
         </div>
         <div class="side-menu-items">
-            <div class="side-menu-item active" onclick="navigateTo('home.html')">
+navigateTo('home.php')
                 <i class="fas fa-home"></i> <span>Beranda</span>
             </div>
-            <div class="side-menu-item" onclick="navigateTo('status-pesanan.html')">
+navigateTo('status-pesanan.php')
                 <i class="fas fa-clipboard-list"></i> <span>Pesanan Saya</span>
             </div>
-            <div class="side-menu-item" onclick="navigateTo('keranjang.html')">
+navigateTo('keranjang.php')
                 <i class="fas fa-shopping-cart"></i> <span>Keranjang</span>
             </div>
             <div class="side-menu-item" onclick="navigateTo('profile.html')">
@@ -651,8 +651,8 @@
         
         window.navigateToDashboard = function() {
             if (currentUser) {
-                if (currentUser.role === 'stand') window.location.href = 'dashboard-stand.html';
-                else if (currentUser.role === 'admin') window.location.href = 'dashboard-admin.html';
+window.location.href = 'dashboard-stand.php';
+window.location.href = 'dashboard-admin.php';
             }
             toggleMenu();
         };

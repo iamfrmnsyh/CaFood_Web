@@ -1,9 +1,17 @@
--- SQL schema for CaFood_Web MySQL database
-CREATE DATABASE IF NOT EXISTS cafood CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+-- CaFood Web - MySQL schema
+-- Generated/rewritten init.sql
+
+CREATE DATABASE IF NOT EXISTS cafood
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
 USE cafood;
 
 SET FOREIGN_KEY_CHECKS = 0;
 
+-- =====================
+-- USERS
+-- =====================
 CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(150) NOT NULL,
@@ -13,15 +21,23 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- =====================
+-- STANDS
+-- =====================
 CREATE TABLE IF NOT EXISTS stands (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(150) NOT NULL,
   location VARCHAR(255),
   owner_id INT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE SET NULL
+  CONSTRAINT fk_stands_owner
+    FOREIGN KEY (owner_id) REFERENCES users(id)
+    ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- =====================
+-- CATEGORIES
+-- =====================
 CREATE TABLE IF NOT EXISTS categories (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(150) NOT NULL,
@@ -29,6 +45,9 @@ CREATE TABLE IF NOT EXISTS categories (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- =====================
+-- MENUS
+-- =====================
 CREATE TABLE IF NOT EXISTS menus (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(200) NOT NULL,
@@ -39,10 +58,17 @@ CREATE TABLE IF NOT EXISTS menus (
   image_url VARCHAR(500),
   available TINYINT(1) DEFAULT 1,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
-  FOREIGN KEY (stand_id) REFERENCES stands(id) ON DELETE SET NULL
+  CONSTRAINT fk_menus_category
+    FOREIGN KEY (category_id) REFERENCES categories(id)
+    ON DELETE SET NULL,
+  CONSTRAINT fk_menus_stand
+    FOREIGN KEY (stand_id) REFERENCES stands(id)
+    ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- =====================
+-- ORDERS
+-- =====================
 CREATE TABLE IF NOT EXISTS orders (
   id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT,
@@ -51,20 +77,34 @@ CREATE TABLE IF NOT EXISTS orders (
   status VARCHAR(50) DEFAULT 'pending',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NULL,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-  FOREIGN KEY (stand_id) REFERENCES stands(id) ON DELETE SET NULL
+  CONSTRAINT fk_orders_user
+    FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE SET NULL,
+  CONSTRAINT fk_orders_stand
+    FOREIGN KEY (stand_id) REFERENCES stands(id)
+    ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- =====================
+-- ORDER ITEMS
+-- =====================
 CREATE TABLE IF NOT EXISTS order_items (
   id INT AUTO_INCREMENT PRIMARY KEY,
   order_id INT NOT NULL,
   menu_id INT,
   quantity INT NOT NULL DEFAULT 1,
   price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-  FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
-  FOREIGN KEY (menu_id) REFERENCES menus(id) ON DELETE SET NULL
+  CONSTRAINT fk_order_items_order
+    FOREIGN KEY (order_id) REFERENCES orders(id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_order_items_menu
+    FOREIGN KEY (menu_id) REFERENCES menus(id)
+    ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- =====================
+-- PAYMENTS
+-- =====================
 CREATE TABLE IF NOT EXISTS payments (
   id INT AUTO_INCREMENT PRIMARY KEY,
   order_id INT NOT NULL,
@@ -73,7 +113,14 @@ CREATE TABLE IF NOT EXISTS payments (
   status VARCHAR(50) DEFAULT 'pending',
   transaction_id VARCHAR(255),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+  CONSTRAINT fk_payments_order
+    FOREIGN KEY (order_id) REFERENCES orders(id)
+    ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+-- Optional seed data (commented out)
+-- INSERT INTO users(name,email,password_hash,role) VALUES
+-- ('Admin','admin@example.com', '$2y$10$replace_hash_here','admin');
+

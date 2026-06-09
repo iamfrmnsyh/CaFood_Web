@@ -1,9 +1,113 @@
+<?php
+session_start();
+
+// Include database configuration
+require_once __DIR__ . '/config/database.php';
+
+// Get stand ID from URL
+$standId = isset($_GET['stand_id']) ? (int)$_GET['stand_id'] : 0;
+
+if ($standId <= 0) {
+    header('Location: index.php');
+    exit;
+}
+
+// Get stand data
+$stmt = $pdo->prepare("SELECT * FROM stands WHERE id = ? AND status = 'Open'");
+$stmt->execute([$standId]);
+$stand = $stmt->fetch(PDO::FETCH_ASSOC);
+
+if (!$stand) {
+    header('Location: index.php');
+    exit;
+}
+
+// Get menus for this stand
+$stmt = $pdo->prepare("SELECT * FROM menus WHERE stand_id = ? AND available = 'Tersedia' ORDER BY created_at DESC");
+$stmt->execute([$standId]);
+$menus = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Get cart items from cookie/session
+$cart = [];
+if (isset($_COOKIE['cart_' . $standId])) {
+    $cart = json_decode($_COOKIE['cart_' . $standId], true);
+    if (!is_array($cart)) $cart = [];
+}
+
+// Handle add to cart
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
+    $menuId = (int)$_POST['menu_id'];
+    $quantity = (int)$_POST['quantity'];
+    
+    if ($menuId > 0 && $quantity > 0) {
+        // Find menu item
+        $stmt = $pdo->prepare("SELECT * FROM menus WHERE id = ? AND stand_id = ? AND available = 'Tersedia'");
+        $stmt->execute([$menuId, $standId]);
+        $menu = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($menu) {
+            if (isset($cart[$menuId])) {
+                $cart[$menuId]['quantity'] += $quantity;
+            } else {
+                $cart[$menuId] = [
+                    'id' => $menu['id'],
+                    'name' => $menu['name'],
+                    'price' => $menu['price'],
+                    'image' => $menu['image'],
+                    'quantity' => $quantity
+                ];
+            }
+            
+            // Save cart to cookie (expires in 30 days)
+            setcookie('cart_' . $standId, json_encode($cart), time() + (86400 * 30), "/");
+            setcookie('current_stand', json_encode(['id' => $stand['id'], 'name' => $stand['stand_name']]), time() + (86400 * 30), "/");
+            
+            $success = "Menu berhasil ditambahkan ke keranjang!";
+        }
+    }
+}
+
+// Handle update quantity
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_quantity'])) {
+    $menuId = (int)$_POST['menu_id'];
+    $change = (int)$_POST['change'];
+    
+    if (isset($cart[$menuId])) {
+        $newQuantity = $cart[$menuId]['quantity'] + $change;
+        if ($newQuantity > 0) {
+            $cart[$menuId]['quantity'] = $newQuantity;
+        } else {
+            unset($cart[$menuId]);
+        }
+        
+        setcookie('cart_' . $standId, json_encode($cart), time() + (86400 * 30), "/");
+    }
+    
+    header("Location: stand-detail.php?stand_id=" . $standId);
+    exit;
+}
+
+// Calculate cart totals
+$totalItems = array_sum(array_column($cart, 'quantity'));
+$totalPrice = array_sum(array_map(function($item) {
+    return $item['price'] * $item['quantity'];
+}, $cart));
+
+function formatRupiah($price) {
+    return 'Rp ' . number_format($price, 0, ',', '.');
+}
+
+// Get rating (default 4.5 if not set)
+$rating = $stand['rating'] ?? 4.5;
+$deliveryTime = $stand['estimasiWaktu'] ?? '15-30 min';
+?>
+
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CaFood • Detail Stand & Menu</title>
+    <title>CaFood • <?php echo htmlspecialchars($stand['stand_name']); ?></title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap" rel="stylesheet">
     <style>
@@ -50,6 +154,7 @@
             cursor: pointer;
             z-index: 10;
             transition: all 0.2s;
+            text-decoration: none;
         }
 
         .cart-icon-header {
@@ -69,6 +174,8 @@
             cursor: pointer;
             z-index: 10;
             transition: all 0.2s;
+            text-decoration: none;
+            position: relative;
         }
 
         .cart-icon-header:hover, .back-btn:hover {
@@ -318,6 +425,8 @@
             font-weight: 700;
             font-size: 0.9rem;
             cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
         }
 
         .view-cart-btn {
@@ -328,6 +437,8 @@
             border-radius: 60px;
             font-weight: 600;
             cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
         }
 
         .toast {
@@ -355,6 +466,15 @@
             }
         }
 
+        .alert-success {
+            background: #D1FAE5;
+            color: #059669;
+            padding: 12px 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
         @media (max-width: 768px) {
             .stand-header { height: 200px; }
             .menu-item-card { flex-direction: column; }
@@ -366,246 +486,97 @@
 </head>
 <body>
     <div class="stand-header">
-        <div class="back-btn" onclick="history.back()">←</div>
-        <div class="cart-icon-header" onclick="window.location.href='keranjang.php'">
+        <a href="javascript:history.back()" class="back-btn">←</a>
+        <a href="keranjang.php" class="cart-icon-header">
             <i class="fas fa-shopping-cart"></i>
-            <span class="cart-count-badge" id="cartCountHeader">0</span>
-        </div>
-        <img class="stand-cover" id="standCover" src="" alt="Stand Cover">
+            <span class="cart-count-badge"><?php echo $totalItems; ?></span>
+        </a>
+        <?php if($stand['gambarUrl']): ?>
+            <img class="stand-cover" src="<?php echo htmlspecialchars($stand['gambarUrl']); ?>" alt="Stand Cover">
+        <?php else: ?>
+            <div class="stand-cover" style="display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #6d28d9, #a855f7);">
+                <i class="fas fa-store" style="font-size: 5rem; color: white; opacity: 0.5;"></i>
+            </div>
+        <?php endif; ?>
     </div>
 
-    <div class="stand-info-card" id="standInfo"></div>
+    <div class="stand-info-card">
+        <h1 class="stand-title"><?php echo htmlspecialchars($stand['stand_name']); ?></h1>
+        <div class="stand-meta">
+            <span class="stand-rating"><i class="fas fa-star"></i> <?php echo $rating; ?></span>
+            <span><i class="far fa-clock"></i> <?php echo htmlspecialchars($deliveryTime); ?></span>
+            <span><i class="fas fa-motorcycle"></i> Free Delivery</span>
+        </div>
+        <p><?php echo htmlspecialchars($stand['description'] ?: 'Tidak ada deskripsi'); ?></p>
+    </div>
 
     <div class="menu-section">
         <div class="section-title">
             <i class="fas fa-utensils" style="color:#6d28d9;"></i> Menu List
         </div>
-        <div class="menu-list" id="menuList"></div>
-    </div>
-
-    <div class="cart-summary" id="cartSummary"></div>
-
-    <script>
-        const standsData = [
-            {
-                id: 1,
-                name: "Warung Makan PW",
-                rating: 4.7,
-                deliveryTime: "15-20 min",
-                imageUrl: "https://images.unsplash.com/photo-1633945274405-b6c8069047b0?w=800&auto=format",
-                description: "Menu nasi rames, ayam bakar, ayam goreng, aneka lauk & sayur, aneka sate, dan gorengan.",
-                menus: [
-                    { id: 101, name: "Nasi Rames Komplit", price: 15000, desc: "Nasi + ayam + tempe + tahu + sayur", image: "https://images.unsplash.com/photo-1589302168068-964664d93dc0?w=400&auto=format" },
-                    { id: 102, name: "Ayam Bakar", price: 12000, desc: "Ayam bakar bumbu kecap", image: "https://images.unsplash.com/photo-1630315500315-43112e2bfd88?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8YXlhbSUyMGJha2FyfGVufDB8fDB8fHww" },
-                    { id: 103, name: "Ayam Goreng", price: 12000, desc: "Ayam goreng gurih dan lezat", image: "https://images.unsplash.com/photo-1732185269471-b62b52ca46f9?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8bmFzaSUyMGF5YW0lMjBnb3Jlbmd8ZW58MHx8MHx8fDA%3D" },
-                    { id: 104, name: "Sate Ayam (5 tusuk)", price: 10000, desc: "Sate ayam dengan bumbu kacang", image: "https://images.unsplash.com/photo-1603360946369-dc9bb6258143?w=400&auto=format" },
-                    { id: 105, name: "Gorengan (5 pcs)", price: 5000, desc: "Tahu, tempe, bakwan, pisang, ubi", image: "https://images.unsplash.com/photo-1613764816537-a43baeb559c1?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8aW5kb25lc2lhbiUyMGZyaXR0ZXJzfGVufDB8fDB8fHwwhttps://images.unsplash.com/photo-1629386199824-700da7af2097?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTF8fHBvdGF0byUyMGZyaXR0ZXJzfGVufDB8fDB8fHwwhttps://media.istockphoto.com/id/2150260758/photo/perkedel-kentang-is-an-indonesian-fried-patties-made-of-mashed-potatoes-minced-meat-garlic.webp?a=1&b=1&s=612x612&w=0&k=20&c=fwrMjoy8vKdP57HFSSE0_Mu3Q5dJ0iinlqxAU1vvcm8=https://media.istockphoto.com/id/2255993915/photo/various-gorengan-for-takjil-breaking-the-fast.webp?a=1&b=1&s=612x612&w=0&k=20&c=tUc3_NjT3nbl8lz6GKu85LiuldtlCV6LLZjKb5Fh7lM=https://images.unsplash.com/photo-1601050690597-df0568f70950?w=400&auto=format" },
-                    { id: 106, name: "Telur Dadar", price: 5000, desc: "Telur dadar tipis", image: "https://images.unsplash.com/photo-1677137261161-0095c10418ef?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Nnx8YXNpYW4lMjBvbWVsZXR0fGVufDB8fDB8fHwwhttps://media.istockphoto.com/id/2235290327/photo/egg-roll-omelete-or-telur-dadar-gulung-or-tamagoyaki-or-japaneses-egg-roll-gyeran-mari-or.webp?a=1&b=1&s=612x612&w=0&k=20&c=CDp1H7johwRnPDRsrQUUGR0FmHMkdz-aoNFIsFMgLKE=https://images.unsplash.com/photo-1604908554167-5d2b8c9e0b93?w=400&auto=format" },
-                    { id: 107, name: "Perkedel", price: 1000, desc: "Perkedel kentang", image: "https://images.unsplash.com/photo-1629386199824-700da7af2097?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTF8fHBvdGF0byUyMGZyaXR0ZXJzfGVufDB8fDB8fHwwhttps://media.istockphoto.com/id/2150260758/photo/perkedel-kentang-is-an-indonesian-fried-patties-made-of-mashed-potatoes-minced-meat-garlic.webp?a=1&b=1&s=612x612&w=0&k=20&c=fwrMjoy8vKdP57HFSSE0_Mu3Q5dJ0iinlqxAU1vvcm8=https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?w=400&auto=format" }
-                ]
-            },
-            {
-                id: 2,
-                name: "Kantin Dinasty Kitchen",
-                rating: 4.8,
-                deliveryTime: "10-20 min",
-                imageUrl: "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=800&auto=format",
-                description: "Bakso, ayam geprek, nasi goreng, takoyaki, kupat, gorengan, aneka jajanan.",
-                menus: [
-                    { id: 201, name: "Bakso Urat", price: 15000, desc: "Bakso sapi + mie + pangsit", image: "https://images.unsplash.com/photo-1747317368514-590dad462536?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8YmFrc298ZW58MHx8MHx8fDA%3Dhttps://images.unsplash.com/photo-1605475121042-fc21b7c2a4e5?w=400&auto=format" },
-                    { id: 202, name: "Ayam Geprek", price: 12000, desc: "Ayam geprek sambal bawang + nasi", image: "https://images.unsplash.com/photo-1569058242252-623df46b5025?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8c3BpY3klMjBmcmllZCUyMGNoaWNrZW4lMjByaWNlfGVufDB8fDB8fHwwhttps://images.unsplash.com/photo-1625944230945-1b7dd3b949ab?w=400&auto=format" },
-                    { id: 203, name: "Nasi Goreng Spesial", price: 12000, desc: "Nasi goreng + telur + ayam", image: "https://images.unsplash.com/photo-1680674814945-7945d913319c?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTJ8fGluZG9uZXNpYW4lMjBmcmllZCUyMHJpY2V8ZW58MHx8MHx8fDA%3Dhttps://images.unsplash.com/photo-1604908176997-431e7b6e4e52?w=400&auto=format" },
-                    { id: 204, name: "Takoyaki (5 pcs)", price: 10000, desc: "Takoyaki saus khas", image: "https://images.unsplash.com/photo-1742633882704-41ec3a57dbb7?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Nnx8dGFrb3lha2l8ZW58MHx8MHx8fDA%3Dhttps://images.unsplash.com/photo-1617196034796-73dfa7b1fd56?w=400&auto=format" },
-                    { id: 205, name: "Kupat Tahu", price: 12000, desc: "Kupat + tahu + taoge + bumbu kacang", image: "https://plus.unsplash.com/premium_photo-1671547329181-8b1925cab127?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NXx8a2V0dXBhdCUyMHRhaHV8ZW58MHx8MHx8fDA%3Dhttps://images.unsplash.com/photo-1589307004396-0a4d9a6a1c06?w=400&auto=format" },
-                    { id: 206, name: "Gorengan", price: 1000, desc: "Campuran tahu, tempe, bakwan, risol", image: "https://images.unsplash.com/photo-1613764816537-a43baeb559c1?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8aW5kb25lc2lhbiUyMGZyaXR0ZXJzfGVufDB8fDB8fHwwhttps://images.unsplash.com/photo-1629386199824-700da7af2097?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTF8fHBvdGF0byUyMGZyaXR0ZXJzfGVufDB8fDB8fHwwhttps://media.istockphoto.com/id/2150260758/photo/perkedel-kentang-is-an-indonesian-fried-patties-made-of-mashed-potatoes-minced-meat-garlic.webp?a=1&b=1&s=612x612&w=0&k=20&c=fwrMjoy8vKdP57HFSSE0_Mu3Q5dJ0iinlqxAU1vvcm8=https://media.istockphoto.com/id/2255993915/photo/various-gorengan-for-takjil-breaking-the-fast.webp?a=1&b=1&s=612x612&w=0&k=20&c=tUc3_NjT3nbl8lz6GKu85LiuldtlCV6LLZjKb5Fh7lM=https://images.unsplash.com/photo-1601050690597-df0568f70950?w=400&auto=format" },
-                    { id: 207, name: "Jajanan Pasar", price: 2000, desc: "Lupis, klepon, mendut", image: "https://images.unsplash.com/photo-1680345576151-bbc497ba969e?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8aW5kb25lc2lhbiUyMHRyYWRpdGlvbmFsJTIwc25hY2tzfGVufDB8fDB8fHwwhttps://images.unsplash.com/photo-1604909053196-2c8d0d8c3c06?w=400&auto=format" }
-                ]
-            },
-            {
-                id: 3,
-                name: "Warmindo Syailendra 168",
-                rating: 4.6,
-                deliveryTime: "10-15 min",
-                imageUrl: "https://images.unsplash.com/photo-1565958011703-44f9829ba187?w=800&auto=format",
-                description: "Indomie goreng, rebus, telur, pecel, gado-gado, ketoprak, pentol kuah, aneka jajanan.",
-                menus: [
-                    { id: 301, name: "Indomie Goreng", price: 7000, desc: "Indomie goreng + bawang goreng", image: "https://images.unsplash.com/photo-1612929633738-8fe44f7ec841?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8ZnJpZWQlMjBpbnN0YW50JTIwbm9vZGxlc3xlbnwwfHwwfHx8MA%3D%3Dhttps://images.unsplash.com/photo-1626808642875-0aa545482dfb?w=400&auto=format" },
-                    { id: 302, name: "Indomie Rebus", price: 7000, desc: "Indomie kuah + sayur", image: "https://images.unsplash.com/photo-1761125065373-05a8e2f85cd5?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTZ8fGZyaWVkJTIwaW5zdGFudCUyMG5vb2RsZXN8ZW58MHx8MHx8fDA%3Dhttps://images.unsplash.com/photo-1612929633738-8fe44f7ec841?w=400&auto=format" },
-                    { id: 303, name: "Indomie Telur", price: 10000, desc: "Indomie goreng/rebus + telur", image: "https://images.unsplash.com/photo-1752924349515-761435ec22b3?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTl8fGZyaWVkJTIwaW5zdGFudCUyMG5vb2RsZXMlMjBlZ2d8ZW58MHx8MHx8fDA%3Dhttps://images.unsplash.com/photo-1626808642875-0aa545482dfb?w=400&auto=format" },
-                    { id: 304, name: "Pecel", price: 10000, desc: "Sayur pecel + bumbu kacang", image: "https://images.unsplash.com/photo-1750190624031-8a1eacae11bb?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8dmVnZXRhYmxlJTIwcGVhbnV0JTIwc2FsYWR8ZW58MHx8MHx8fDA%3Dhttps://images.unsplash.com/photo-1589302168068-964664d93dc0?w=400&auto=format" },
-                    { id: 305, name: "Gado-Gado", price: 10000, desc: "Sayur + lontong + bumbu kacang", image: "https://images.unsplash.com/photo-1707269561481-a4a0370a980a?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8Z2FkbyUyMGdhZG8lMjBzYWxhZHxlbnwwfHwwfHx8MA%3D%3Dhttps://images.unsplash.com/photo-1589302168068-964664d93dc0?w=400&auto=format" },
-                    { id: 306, name: "Ketoprak", price: 12000, desc: "Ketoprak Jakarta", image: "https://images.unsplash.com/photo-1707269561481-a4a0370a980a?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8Z2FkbyUyMGdhZG8lMjBzYWxhZHxlbnwwfHwwfHx8MA%3D%3Dhttps://images.unsplash.com/photo-1589302168068-964664d93dc0?w=400&auto=format" },
-                    { id: 307, name: "Pentol Kuah", price: 5000, desc: "Pentol bakso kuah hangat", image: "https://images.unsplash.com/photo-1768703321913-db220381bb84?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Nnx8bWVhdGJhbGwlMjBzb3VwJTIwc3RyZWV0JTIwZm9vZHxlbnwwfHwwfHx8MA%3D%3D" },
-                    { id: 308, name: "Aneka Jajanan (3 pcs)", price: 5000, desc: "Cireng, cilok, cilor", image: "https://images.unsplash.com/photo-1680345576151-bbc497ba969e?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8aW5kb25lc2lhbiUyMHRyYWRpdGlvbmFsJTIwc25hY2tzfGVufDB8fDB8fHwwhttps://images.unsplash.com/photo-1604909053196-2c8d0d8c3c06?w=400&auto=format" }
-                ]
-            }
-        ];
-
-        const urlParams = new URLSearchParams(window.location.search);
-        const standId = parseInt(urlParams.get('standId')) || 1;
-        const currentStand = standsData.find(s => s.id === standId) || standsData[0];
-
-        let cart = [];
-
-        function formatRupiah(price) {
-            return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(price);
-        }
-
-        function saveCart() {
-            localStorage.setItem('cart', JSON.stringify(cart));
-            localStorage.setItem('currentStand', JSON.stringify({
-                id: currentStand.id,
-                name: currentStand.name
-            }));
-            updateCartDisplay();
-        }
-
-        function updateCartDisplay() {
-            const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
-            const totalPrice = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-
-            const headerBadge = document.getElementById('cartCountHeader');
-            if (headerBadge) headerBadge.textContent = totalItems;
-
-            const summaryContainer = document.getElementById('cartSummary');
-            if (summaryContainer) {
-                if (cart.length === 0) {
-                    summaryContainer.innerHTML = `
-                        <div class="cart-total">
-                            <span class="cart-total-value">Rp 0</span>
-                            <span class="cart-items-count">0 item</span>
-                        </div>
-                        <button class="view-cart-btn" onclick="window.location.href='keranjang.php'">View Cart</button>
-                    `;
-                } else {
-                    summaryContainer.innerHTML = `
-                        <div class="cart-total">
-                            <span class="cart-total-value">${formatRupiah(totalPrice)}</span>
-                            <span class="cart-items-count">${totalItems} item${totalItems > 1 ? 's' : ''}</span>
-                        </div>
-                        <div style="display: flex; gap: 12px;">
-                            <button class="view-cart-btn" onclick="window.location.href='keranjang.php'">View Cart</button>
-                            <button class="checkout-btn" onclick="window.location.href='checkout.php'">Checkout</button>
-                        </div>
-                    `;
-                }
-            }
-        }
-
-        function addToCart(menu) {
-            updateQuantity(menu.id, 1);
-            showToast(`${menu.name} ditambahkan!`);
-        }
-
-        function updateQuantity(menuId, change) {
-            let item = cart.find(i => i.id === menuId);
-
-            if (!item && change > 0) {
-                const menu = currentStand.menus.find(m => m.id === menuId);
-                item = {
-                    id: menu.id,
-                    name: menu.name,
-                    price: menu.price,
-                    quantity: 1,
-                    image: menu.image
-                };
-                cart.push(item);
-            } else if (item) {
-                item.quantity += change;
-                if (item.quantity <= 0) {
-                    cart = cart.filter(i => i.id !== menuId);
-                }
-            }
-
-            saveCart();
-            renderMenus();
-        }
-
-        function showToast(message) {
-            const existingToast = document.querySelector('.toast');
-            if (existingToast) existingToast.remove();
-
-            const toast = document.createElement('div');
-            toast.className = 'toast';
-            toast.innerHTML = `<i class="fas fa-check-circle"></i> ${message}`;
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 2000);
-        }
-
-        function renderStandInfo() {
-            const container = document.getElementById('standInfo');
-            const coverImg = document.getElementById('standCover');
-
-            if (coverImg) coverImg.src = currentStand.imageUrl;
-
-            if (container) {
-                container.innerHTML = `
-                    <h1 class="stand-title">${currentStand.name}</h1>
-                    <div class="stand-meta">
-                        <span class="stand-rating"><i class="fas fa-star"></i> ${currentStand.rating}</span>
-                        <span><i class="far fa-clock"></i> ${currentStand.deliveryTime}</span>
-                        <span><i class="fas fa-motorcycle"></i> Free Delivery</span>
+        
+        <?php if(isset($success)): ?>
+            <div class="alert-success"><?php echo htmlspecialchars($success); ?></div>
+        <?php endif; ?>
+        
+        <div class="menu-list">
+            <?php if(empty($menus)): ?>
+                <div style="text-align: center; padding: 40px;">Belum ada menu tersedia</div>
+            <?php else: ?>
+                <?php foreach($menus as $menu): ?>
+                <?php $qty = isset($cart[$menu['id']]) ? $cart[$menu['id']]['quantity'] : 0; ?>
+                <div class="menu-item-card">
+                    <div class="menu-image-container">
+                        <?php if($menu['image']): ?>
+                            <img class="menu-image" src="<?php echo htmlspecialchars($menu['image']); ?>" alt="<?php echo htmlspecialchars($menu['name']); ?>" onerror="this.parentElement.innerHTML='<div style=\'display:flex;align-items:center;justify-content:center;height:100%;font-size:2rem;\'>🍽️</div>'">
+                        <?php else: ?>
+                            <div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 2rem;">🍽️</div>
+                        <?php endif; ?>
                     </div>
-                    <p>${currentStand.description}</p>
-                `;
-            }
-        }
-
-        function loadCart() {
-            const savedCart = localStorage.getItem('cart');
-            const savedStand = localStorage.getItem('currentStand');
-
-            if (savedCart && savedStand) {
-                const savedStandData = JSON.parse(savedStand);
-                if (savedStandData.id === currentStand.id) {
-                    cart = JSON.parse(savedCart);
-                } else {
-                    cart = [];
-                }
-            }
-
-            updateCartDisplay();
-        }
-
-        function renderMenus() {
-            const container = document.getElementById('menuList');
-            if (!container) return;
-
-            container.innerHTML = currentStand.menus.map(menu => {
-                const cartItem = cart.find(i => i.id === menu.id);
-                const qty = cartItem ? cartItem.quantity : 0;
-
-                return `
-                    <div class="menu-item-card">
-                        <div class="menu-image-container">
-                            <img class="menu-image" src="${menu.image}" alt="${menu.name}" onerror="this.parentElement.innerHTML='<div style=\'display:flex;align-items:center;justify-content:center;height:100%;font-size:2rem;\'>🍽️</div>'">
+                    <div class="menu-info">
+                        <div class="menu-item-header">
+                            <span class="menu-item-name"><?php echo htmlspecialchars($menu['name']); ?></span>
+                            <span class="menu-item-price"><?php echo formatRupiah($menu['price']); ?></span>
                         </div>
-                        <div class="menu-info">
-                            <div class="menu-item-header">
-                                <span class="menu-item-name">${menu.name}</span>
-                                <span class="menu-item-price">${formatRupiah(menu.price)}</span>
+                        <div class="menu-item-desc"><?php echo htmlspecialchars($menu['description'] ?: 'Tidak ada deskripsi'); ?></div>
+                        <div class="menu-item-actions">
+                            <div class="quantity-selector">
+                                <form method="POST" style="display: inline;">
+                                    <input type="hidden" name="menu_id" value="<?php echo $menu['id']; ?>">
+                                    <input type="hidden" name="change" value="-1">
+                                    <button type="submit" name="update_quantity" class="qty-btn">-</button>
+                                </form>
+                                <span class="qty-value"><?php echo $qty; ?></span>
+                                <form method="POST" style="display: inline;">
+                                    <input type="hidden" name="menu_id" value="<?php echo $menu['id']; ?>">
+                                    <input type="hidden" name="change" value="1">
+                                    <button type="submit" name="update_quantity" class="qty-btn">+</button>
+                                </form>
                             </div>
-                            <div class="menu-item-desc">${menu.desc}</div>
-                            <div class="menu-item-actions">
-                                <div class="quantity-selector">
-                                    <button class="qty-btn" onclick="updateQuantity(${menu.id}, -1)">-</button>
-                                    <span class="qty-value" id="qty-${menu.id}">${qty}</span>
-                                    <button class="qty-btn" onclick="updateQuantity(${menu.id}, 1)">+</button>
-                                </div>
-                                <button class="add-item-btn" onclick="addToCart({id: ${menu.id}, name: '${menu.name}', price: ${menu.price}, image: '${menu.image}'})">
+                            <form method="POST">
+                                <input type="hidden" name="menu_id" value="<?php echo $menu['id']; ?>">
+                                <input type="hidden" name="quantity" value="1">
+                                <button type="submit" name="add_to_cart" class="add-item-btn">
                                     <i class="fas fa-plus"></i> Add to Cart
                                 </button>
-                            </div>
+                            </form>
                         </div>
                     </div>
-                `;
-            }).join('');
-        }
+                </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+    </div>
 
-        renderStandInfo();
-        renderMenus();
-        loadCart();
-    </script>
+    <div class="cart-summary">
+        <div class="cart-total">
+            <span class="cart-total-value"><?php echo formatRupiah($totalPrice); ?></span>
+            <span class="cart-items-count"><?php echo $totalItems; ?> item<?php echo $totalItems > 1 ? 's' : ''; ?></span>
+        </div>
+        <div style="display: flex; gap: 12px;">
+            <a href="keranjang.php" class="view-cart-btn">View Cart</a>
+            <a href="checkout.php" class="checkout-btn">Checkout</a>
+        </div>
+    </div>
 </body>
 </html>
-

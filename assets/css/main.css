@@ -1,0 +1,171 @@
+/* Main design system for CaFood Web */
+:root {
+    --primary: #6C4CF1;
+    --secondary: #8B5CF6;
+    --bg-light: #F8F9FA;
+    --bg-dark: #1A1A2E;
+    --card-bg: rgba(255, 255, 255, 0.85);
+    --text-primary: #1a1a2e;
+    --text-secondary: #64748b;
+    --accent-red: #ef4444;
+    --accent-green: #10b981;
+    --font: 'Inter', sans-serif;
+}
+
+/* Global resets */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--font);
+    background: var(--bg-light);
+    overflow-x: hidden;
+    color: var(--text-primary);
+    line-height: 1.5;
+}
+
+/* Header - glass effect */
+.header {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    padding: 16px 20px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    transition: background 0.3s ease;
+}
+
+.header:hover {
+    background: rgba(255, 255, 255, 0.9);
+}
+
+/* Buttons */
+.btn,
+.logout-btn,
+.login-side-btn,
+.logout-side-btn {
+    display: inline-block;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 30px;
+    cursor: pointer;
+    font-weight: 600;
+    text-decoration: none;
+    transition: transform 0.2s, background 0.3s;
+}
+
+.btn:hover,
+.logout-btn:hover,
+.login-side-btn:hover,
+.logout-side-btn:hover {
+    transform: scale(1.05);
+}
+
+.logout-btn,
+.logout-side-btn {
+    background: var(--accent-red);
+    color: white;
+}
+
+.login-side-btn {
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    color: white;
+}
+
+/* Glass cards */
+.glass-card {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.glass-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15);
+}
+
+/* Stand cards – subtle fade‑in */
+.stand-card {
+    opacity: 0;
+    animation: fadeIn 0.6s ease forwards;
+    max-width: 340px;
+    margin: 0 auto;
+    background: var(--card-bg);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.07);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Side menu – glass effect */
+.side-menu {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+/* Hero – gradient overlay */
+.hero {
+    background: linear-gradient(135deg, var(--bg-dark) 0%, #2A2A4A 100%);
+    color: white;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    padding: 60px 20px;
+}
+
+.hero::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle at center, rgba(108, 76, 241, 0.15) 0%, transparent 50%);
+    animation: rotate 20s linear infinite;
+}
+
+@keyframes rotate {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Responsive */
+@media (max-width:768px) {
+    .stand-grid {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+
+    .hero-title {
+        font-size: 1.4rem;
+    }
+
+    .side-menu {
+        width: 260px;
+    }
+}

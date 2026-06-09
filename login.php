@@ -1,9 +1,46 @@
+<?php
+session_start();
+require_once __DIR__ . '/config/database.php';
+
+$error = '';
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    $email = trim($_POST['email'] ?? '');
+    $password = $_POST['password'] ?? '';
+    
+    if (empty($email) || empty($password)) {
+        $error = 'Email dan password wajib diisi!';
+    } else {
+        $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
+        $stmt->execute([$email]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($user && password_verify($password, $user['password'])) {
+            $_SESSION['user_id'] = $user['id'];
+            $_SESSION['name'] = $user['name'];
+            $_SESSION['role'] = $user['role'];
+            
+            if ($user['role'] == 'admin') {
+                header('Location: dashboard-admin.php');
+            } elseif ($user['role'] == 'stand') {
+                header('Location: dashboard-stand.php');
+            } else {
+                header('Location: index.php');
+            }
+            exit;
+        } else {
+            $error = 'Email atau password salah!';
+        }
+    }
+}
+?>
+
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - CaFood</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Login • CaFood</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -15,331 +52,281 @@
         
         body {
             font-family: 'Inter', sans-serif;
-            background: linear-gradient(135deg, #F5F7FA 0%, #E8ECF0 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            position: relative;
+            overflow: hidden;
         }
         
+        /* Animated Background */
+        body::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 1px, transparent 1px);
+            background-size: 40px 40px;
+            animation: floatGrid 20s linear infinite;
+        }
+        
+        @keyframes floatGrid {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(50px, 50px); }
+        }
+        
+        /* Login Card - LEBIH PENDEK */
         .login-container {
             width: 100%;
-            max-width: 440px;
-            animation: fadeIn 0.5s ease-out;
-        }
-        
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+            max-width: 420px;
+            margin: 20px;
+            position: relative;
+            z-index: 10;
         }
         
         .login-card {
             background: white;
-            border-radius: 32px;
-            padding: 40px 32px;
-            border: 1px solid rgba(108,76,241,0.15);
-            box-shadow: 0 20px 40px rgba(0,0,0,0.05), 0 0 0 1px rgba(108,76,241,0.05);
+            border-radius: 28px;
+            padding: 32px 32px 36px;
+            box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.2);
         }
         
+        /* Logo Section - LEBIH KECIL */
         .logo-section {
             text-align: center;
-            margin-bottom: 32px;
+            margin-bottom: 24px;
         }
         
         .logo-icon {
-            width: 70px;
-            height: 70px;
-            background: linear-gradient(135deg, #6C4CF1, #8B5CF6);
-            border-radius: 20px;
+            width: 56px;
+            height: 56px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 16px;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin: 0 auto 20px;
-            box-shadow: 0 10px 25px rgba(108,76,241,0.25);
+            margin: 0 auto 12px;
         }
         
         .logo-icon i {
-            font-size: 32px;
+            font-size: 1.6rem;
             color: white;
         }
         
-        .logo-text-large {
-            font-size: 28px;
+        .logo-text {
+            font-size: 1.5rem;
             font-weight: 800;
-            background: linear-gradient(135deg, #6C4CF1, #8B5CF6);
+            background: linear-gradient(135deg, #667eea, #764ba2);
             -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
             background-clip: text;
-            margin-bottom: 8px;
+            color: transparent;
         }
         
-        .logo-subtitle {
-            font-size: 13px;
-            color: #888;
-            font-weight: 500;
+        .logo-tagline {
+            font-size: 0.7rem;
+            color: #94a3b8;
+            margin-top: 4px;
         }
         
-        .welcome-section {
-            text-align: center;
-            margin-bottom: 32px;
-        }
-        
-        .welcome-title {
-            font-size: 22px;
+        /* Title - LEBIH KECIL */
+        .login-title {
+            font-size: 1.3rem;
             font-weight: 700;
-            color: #1A1A2E;
-            margin-bottom: 8px;
+            color: #1e293b;
+            margin-bottom: 6px;
+            text-align: center;
         }
         
-        .welcome-desc {
-            font-size: 13px;
-            color: #888;
+        .login-subtitle {
+            font-size: 0.75rem;
+            color: #64748b;
+            text-align: center;
+            margin-bottom: 24px;
         }
         
+        /* Form Groups - LEBIH RAPAT */
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 18px;
         }
         
-        .input-label {
+        .form-group label {
             display: block;
-            font-size: 13px;
+            font-size: 0.8rem;
             font-weight: 600;
-            color: #333;
-            margin-bottom: 8px;
+            color: #334155;
+            margin-bottom: 6px;
         }
         
         .input-wrapper {
             position: relative;
+            display: flex;
+            align-items: center;
         }
         
         .input-wrapper i:first-child {
             position: absolute;
-            left: 16px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #aaa;
-            font-size: 16px;
+            left: 14px;
+            color: #94a3b8;
+            font-size: 0.9rem;
             z-index: 1;
         }
         
-        .input-field {
+        .input-wrapper input {
             width: 100%;
-            padding: 14px 16px 14px 48px;
-            border: 1.5px solid #E8ECF0;
-            border-radius: 16px;
-            font-size: 15px;
+            padding: 12px 45px 12px 42px;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 14px;
+            font-size: 0.9rem;
             font-family: 'Inter', sans-serif;
-            transition: all 0.2s;
-            background: white;
+            transition: all 0.3s;
+            background: #f8fafc;
         }
         
-        .input-field:focus {
+        .input-wrapper input:focus {
             outline: none;
-            border-color: #6C4CF1;
-            box-shadow: 0 0 0 3px rgba(108,76,241,0.1);
+            border-color: #667eea;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
         
-        .input-field.error {
-            border-color: #EF4444;
-        }
-        
-        .input-icon {
-            position: relative;
-        }
-        
-        .input-icon .input-field {
-            padding-right: 48px;
-        }
-        
-        .toggle-password {
+        /* Password Toggle */
+        .password-toggle {
             position: absolute;
-            right: 16px;
+            right: 14px;
             top: 50%;
             transform: translateY(-50%);
             cursor: pointer;
-            color: #aaa;
-            font-size: 18px;
-            z-index: 10;
-            background: white;
-            padding-left: 4px;
+            color: #94a3b8;
+            background: none;
+            border: none;
+            font-size: 0.9rem;
+            padding: 0;
+            width: 22px;
+            height: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1;
         }
         
-        .toggle-password:hover {
-            color: #6C4CF1;
+        .password-toggle:hover {
+            color: #667eea;
         }
         
-        .error-message {
-            color: #EF4444;
-            font-size: 11px;
-            margin-top: 6px;
-            display: none;
+        /* Options - LEBIH SIMPLE */
+        .login-options {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 22px;
+            font-size: 0.75rem;
+        }
+        
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            color: #64748b;
+        }
+        
+        .checkbox-label input {
+            width: 14px;
+            height: 14px;
+            cursor: pointer;
+            accent-color: #667eea;
         }
         
         .forgot-link {
-            text-align: right;
-            margin-bottom: 24px;
-        }
-        
-        .forgot-link a {
-            color: #6C4CF1;
-            font-size: 13px;
-            font-weight: 500;
+            color: #667eea;
             text-decoration: none;
-            cursor: pointer;
+            font-weight: 600;
         }
         
-        .forgot-link a:hover {
+        .forgot-link:hover {
             text-decoration: underline;
         }
         
+        /* Button */
         .login-btn {
             width: 100%;
-            padding: 14px;
-            background: linear-gradient(135deg, #6C4CF1, #8B5CF6);
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
             color: white;
             border: none;
-            border-radius: 60px;
-            font-size: 16px;
+            border-radius: 14px;
+            font-size: 0.9rem;
             font-weight: 700;
             cursor: pointer;
             transition: all 0.3s;
-            margin-bottom: 24px;
-            font-family: 'Inter', sans-serif;
-            box-shadow: 0 4px 12px rgba(108,76,241,0.25);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
         
         .login-btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(108,76,241,0.35);
+            box-shadow: 0 8px 20px -5px rgba(102, 126, 234, 0.4);
         }
         
-        .login-btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        .divider {
-            display: flex;
-            align-items: center;
+        /* Register Link */
+        .register-link {
             text-align: center;
-            margin: 24px 0;
+            margin-top: 20px;
+            font-size: 0.8rem;
+            color: #64748b;
         }
         
-        .divider::before,
-        .divider::after {
-            content: '';
-            flex: 1;
-            border-bottom: 1px solid #E8ECF0;
-        }
-        
-        .divider span {
-            padding: 0 16px;
-            color: #aaa;
-            font-size: 12px;
-        }
-        
-        .google-btn {
-            width: 100%;
-            padding: 12px;
-            background: white;
-            border: 1.5px solid #E8ECF0;
-            border-radius: 60px;
-            font-size: 14px;
-            font-weight: 600;
-            color: #333;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 12px;
-            transition: all 0.2s;
-            margin-bottom: 24px;
-            font-family: 'Inter', sans-serif;
-        }
-        
-        .google-btn:hover {
-            background: #F8F9FA;
-            border-color: #6C4CF1;
-        }
-        
-        .google-btn i {
-            font-size: 18px;
-            color: #DB4437;
-        }
-        
-        .signup-link {
-            text-align: center;
-            font-size: 13px;
-            color: #666;
-        }
-        
-        .signup-link a {
-            color: #6C4CF1;
-            font-weight: 600;
+        .register-link a {
+            color: #667eea;
             text-decoration: none;
+            font-weight: 700;
         }
         
-        .signup-link a:hover {
+        .register-link a:hover {
             text-decoration: underline;
         }
         
-        .toast {
-            position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            padding: 12px 24px;
-            border-radius: 50px;
-            font-size: 14px;
-            font-weight: 500;
-            z-index: 1000;
-            animation: slideDown 0.3s ease;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        /* Error Alert */
+        .error {
+            background: #fef2f2;
+            color: #dc2626;
+            padding: 10px 14px;
+            border-radius: 12px;
+            margin-bottom: 18px;
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
         
-        .toast.success {
-            background: #10B981;
-            color: white;
-        }
-        
-        .toast.error {
-            background: #EF4444;
-            color: white;
-        }
-        
-        @keyframes slideDown {
-            from {
-                opacity: 0;
-                transform: translateX(-50%) translateY(-50px);
+        /* Responsive */
+        @media (max-width: 480px) {
+            .login-card {
+                padding: 24px 24px 28px;
             }
-            to {
-                opacity: 1;
-                transform: translateX(-50%) translateY(0);
+            
+            .logo-icon {
+                width: 48px;
+                height: 48px;
             }
-        }
-        
-        .spinner {
-            display: inline-block;
-            width: 18px;
-            height: 18px;
-            border: 2px solid rgba(255,255,255,0.3);
-            border-top-color: white;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            margin-right: 8px;
-            vertical-align: middle;
-        }
-        
-        @keyframes spin {
-            to { transform: rotate(360deg); }
+            
+            .logo-icon i {
+                font-size: 1.3rem;
+            }
+            
+            .logo-text {
+                font-size: 1.3rem;
+            }
+            
+            .login-title {
+                font-size: 1.2rem;
+            }
         }
     </style>
 </head>
@@ -350,221 +337,71 @@
                 <div class="logo-icon">
                     <i class="fas fa-utensils"></i>
                 </div>
-                <div class="logo-text-large">CaFood</div>
-                <div class="logo-subtitle">Cafe & Food Marketplace</div>
+                <div class="logo-text">CaFood</div>
+                <div class="logo-tagline">Your Daily Cafe Companion</div>
             </div>
             
-            <div class="welcome-section">
-                <div class="welcome-title">Selamat Datang di CaFood!</div>
-                <div class="welcome-desc">Aplikasi pemesanan makanan dan minuman</div>
-            </div>
+            <h1 class="login-title">Selamat Datang! 👋</h1>
+            <p class="login-subtitle">Masuk untuk memesan makanan</p>
             
-            <form id="loginForm">
+            <?php if($error): ?>
+                <div class="error">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <?= htmlspecialchars($error) ?>
+                </div>
+            <?php endif; ?>
+            
+            <form method="POST" action="">
                 <div class="form-group">
-                    <label class="input-label">Email</label>
+                    <label>Email</label>
                     <div class="input-wrapper">
                         <i class="fas fa-envelope"></i>
-                        <input type="email" class="input-field" id="email" placeholder="Masukkan email Anda" autocomplete="off">
+                        <input type="email" name="email" placeholder="contoh@email.com" required>
                     </div>
-                    <div class="error-message" id="emailError">Email tidak valid</div>
                 </div>
                 
                 <div class="form-group">
-                    <label class="input-label">Password</label>
-                    <div class="input-icon">
-                        <input type="password" class="input-field" id="password" placeholder="Masukkan password" autocomplete="off">
-                        <span class="toggle-password" onclick="togglePassword('password', this)">
-                            <i class="fas fa-eye"></i>
-                        </span>
+                    <label>Password</label>
+                    <div class="input-wrapper">
+                        <i class="fas fa-lock"></i>
+                        <input type="password" name="password" id="password" placeholder="Masukkan password" required>
+                        <button type="button" class="password-toggle" onclick="togglePassword()">
+                            <i class="far fa-eye-slash" id="toggleIcon"></i>
+                        </button>
                     </div>
-                    <div class="error-message" id="passwordError">Password harus diisi</div>
                 </div>
                 
-                <div class="forgot-link">
-                    <a href="#" id="forgotPasswordBtn">Lupa Password?</a>
+                <div class="login-options">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="remember"> Ingat saya
+                    </label>
+                    <a href="forgot-password.php" class="forgot-link">Lupa password?</a>
                 </div>
                 
-                <button type="submit" class="login-btn" id="loginBtn">Masuk</button>
+                <button type="submit" class="login-btn">
+                    <i class="fas fa-arrow-right-to-bracket"></i>
+                    Masuk
+                </button>
             </form>
             
-            <div class="divider">
-                <span>atau</span>
-            </div>
-            
-            <button class="google-btn" id="googleLoginBtn">
-                <i class="fab fa-google"></i> Lanjutkan dengan Google
-            </button>
-            
-            <div class="signup-link">
-Belum punya akun? <a href="register.php">Sign Up</a>
+            <div class="register-link">
+                Belum punya akun? <a href="register.php">Daftar</a>
             </div>
         </div>
     </div>
     
-    <script type="module">
-        import './js/api-client.js';
-        const { login } = window.API;
-
-        
-        const emailInput = document.getElementById('email');
-        const passwordInput = document.getElementById('password');
-        const loginBtn = document.getElementById('loginBtn');
-        const forgotBtn = document.getElementById('forgotPasswordBtn');
-        const googleBtn = document.getElementById('googleLoginBtn');
-        
-        function togglePassword(fieldId, element) {
-            const field = document.getElementById(fieldId);
-            const icon = element.querySelector('i');
+    <script>
+        function togglePassword() {
+            const passwordInput = document.getElementById('password');
+            const toggleIcon = document.getElementById('toggleIcon');
             
-            if (field.type === 'password') {
-                field.type = 'text';
-                icon.classList.remove('fa-eye');
-                icon.classList.add('fa-eye-slash');
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                toggleIcon.className = 'far fa-eye';
             } else {
-                field.type = 'password';
-                icon.classList.remove('fa-eye-slash');
-                icon.classList.add('fa-eye');
+                passwordInput.type = 'password';
+                toggleIcon.className = 'far fa-eye-slash';
             }
-        }
-        window.togglePassword = togglePassword;
-        
-        emailInput.value = '';
-        passwordInput.value = '';
-        
-        function showToast(message, type = 'success') {
-            const existingToast = document.querySelector('.toast');
-            if (existingToast) existingToast.remove();
-            
-            const toast = document.createElement('div');
-            toast.className = `toast ${type}`;
-            toast.textContent = message;
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 4000);
-        }
-        
-        function validateForm() {
-            let isValid = true;
-            const email = emailInput.value.trim();
-            const password = passwordInput.value;
-            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            
-            if (!email) {
-                document.getElementById('emailError').style.display = 'block';
-                emailInput.classList.add('error');
-                isValid = false;
-            } else if (!emailRegex.test(email)) {
-                document.getElementById('emailError').style.display = 'block';
-                emailInput.classList.add('error');
-                isValid = false;
-            } else {
-                document.getElementById('emailError').style.display = 'none';
-                emailInput.classList.remove('error');
-            }
-            
-            if (!password) {
-                document.getElementById('passwordError').style.display = 'block';
-                passwordInput.classList.add('error');
-                isValid = false;
-            } else {
-                document.getElementById('passwordError').style.display = 'none';
-                passwordInput.classList.remove('error');
-            }
-            
-            return isValid;
-        }
-        
-        function redirectByRole(role) {
-            if (role === 'customer') window.location.href = 'home.php';
-            else if (role === 'stand' || role === 'operator') window.location.href = 'dashboard-stand.php';
-            else if (role === 'admin') window.location.href = 'dashboard-admin.php';
-            else window.location.href = 'home.php';
-        }
-
-        function setSession(user) {
-            const userSession = {
-                id: user.id,
-                uid: user.id,
-                name: user.name,
-                email: user.email,
-                role: user.role || 'customer'
-            };
-            localStorage.setItem('currentUser', JSON.stringify(userSession));
-            showToast(`✅ Selamat datang, ${userSession.name}!`, 'success');
-            setTimeout(() => redirectByRole(userSession.role), 800);
-        }
-
-        
-        forgotBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            showToast('Fitur reset password belum tersedia (backend mode).', 'error');
-        });
-
-        
-        // Google login belum tersedia pada backend mode
-        googleBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            showToast('Google login belum tersedia (backend mode).', 'error');
-        });
-
-        // ============ EMAIL/PASSWORD LOGIN ============
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
-
-            e.preventDefault();
-            
-            if (!validateForm()) return;
-            
-            const email = emailInput.value.trim();
-            const password = passwordInput.value;
-            
-            loginBtn.disabled = true;
-            loginBtn.innerHTML = '<span class="spinner"></span> Memproses...';
-            
-            console.log("🔐 Login attempt:", { email });
-            
-            try {
-                const result = await login({ email, password });
-                if (result?.user) {
-                    setSession({
-                        id: result.user.id,
-                        name: result.user.name,
-                        email: result.user.email,
-                        role: result.user.role,
-                    });
-                } else {
-                    showToast(result?.error || 'Login gagal', 'error');
-                    loginBtn.disabled = false;
-                    loginBtn.innerHTML = 'Masuk';
-                    return;
-                }
-
-                
-            } catch (error) {
-                console.error('Login error:', error);
-                showToast('Login gagal. Periksa email/password.', 'error');
-                
-                loginBtn.disabled = false;
-                loginBtn.innerHTML = 'Masuk';
-            }
-
-        });
-        
-        emailInput.addEventListener('input', () => {
-            if (emailInput.value.trim()) {
-                document.getElementById('emailError').style.display = 'none';
-                emailInput.classList.remove('error');
-            }
-        });
-        
-        passwordInput.addEventListener('input', () => {
-            if (passwordInput.value) {
-                document.getElementById('passwordError').style.display = 'none';
-                passwordInput.classList.remove('error');
-            }
-        });
-        
-        const savedUser = localStorage.getItem('currentUser');
-        if (savedUser) {
-            console.log("Already logged in as:", JSON.parse(savedUser));
         }
     </script>
 </body>

@@ -1,3 +1,169 @@
+<?php
+session_start();
+
+// Include database configuration
+require_once __DIR__ . '/config/database.php';
+
+// Check if user is logged in
+if (!isset($_SESSION['user_id'])) {
+    header('Location: login.php');
+    exit;
+}
+
+$userId = $_SESSION['user_id'];
+$userName = $_SESSION['name'] ?? '';
+$userPhone = $_SESSION['phone'] ?? '';
+
+// Handle form submission
+$message = '';
+$error = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_order'])) {
+    $customerName = trim($_POST['customer_name']);
+    $customerPhone = trim($_POST['customer_phone']);
+    $tableNumber = trim($_POST['table_number']) ?: null;
+    $notes = trim($_POST['order_notes']) ?: null;
+    $paymentMethod = $_POST['payment_method'];
+    
+    if (empty($customerName) || empty($customerPhone)) {
+        $error = "Mohon isi nama dan nomor telepon Anda!";
+    } else {
+        try {
+            // Get cart items
+            $stmt = $pdo->prepare("
+                SELECT 
+                    c.menu_id,
+                    m.name,
+                    m.price,
+                    c.quantity,
+                    m.stand_id,
+                    s.stand_name
+                FROM cart c
+                JOIN menus m ON c.menu_id = m.id
+                JOIN stands s ON m.stand_id = s.id
+                WHERE c.user_id = ?
+            ");
+            $stmt->execute([$userId]);
+            $cartItems = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            if (empty($cartItems)) {
+                $error = "Keranjang belanja kosong!";
+            } else {
+                $total = array_sum(array_map(function($item) {
+                    return $item['price'] * $item['quantity'];
+                }, $cartItems));
+                
+                $orderNumber = 'ORD-' . date('Ymd') . '-' . rand(100, 999);
+                $queueNumber = rand(1, 50);
+                $estimatedTime = 15;
+                $paymentNames = [
+                    'cash' => 'Tunai',
+                    'qris' => 'QRIS'
+                ];
+                
+                $pdo->beginTransaction();
+                
+                // Insert order
+                $stmt = $pdo->prepare("
+                    INSERT INTO orders (
+                        order_number, queue_number, customer_name, customer_phone, 
+                        table_number, notes, stand_id, stand_name, total, 
+                        payment_method, estimated_time, user_id, status, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                ");
+                
+                $standId = $cartItems[0]['stand_id'] ?? null;
+                $standName = $cartItems[0]['stand_name'] ?? null;
+                
+                $stmt->execute([
+                    $orderNumber,
+                    $queueNumber,
+                    $customerName,
+                    $customerPhone,
+                    $tableNumber,
+                    $notes,
+                    $standId,
+                    $standName,
+                    $total,
+                    $paymentNames[$paymentMethod],
+                    $estimatedTime,
+                    $userId,
+                    'pending'
+                ]);
+                
+                $orderId = $pdo->lastInsertId();
+                
+                // Insert order items
+                $stmt = $pdo->prepare("
+                    INSERT INTO order_items (order_id, menu_id, menu_name, quantity, price, subtotal)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ");
+                
+                foreach ($cartItems as $item) {
+                    $subtotal = $item['price'] * $item['quantity'];
+                    $stmt->execute([
+                        $orderId,
+                        $item['menu_id'],
+                        $item['name'],
+                        $item['quantity'],
+                        $item['price'],
+                        $subtotal
+                    ]);
+                }
+                
+                // Clear cart
+                $stmt = $pdo->prepare("DELETE FROM cart WHERE user_id = ?");
+                $stmt->execute([$userId]);
+                
+                $pdo->commit();
+                
+                // Store order in session for status page
+                $_SESSION['last_order'] = [
+                    'order_number' => $orderNumber,
+                    'queue_number' => $queueNumber,
+                    'total' => $total,
+                    'estimated_time' => $estimatedTime
+                ];
+                
+                $message = "Pesanan berhasil dibuat!";
+                header("refresh:2;url=status-pesanan.php");
+            }
+        } catch(PDOException $e) {
+            $pdo->rollBack();
+            $error = "Gagal membuat pesanan: " . $e->getMessage();
+        }
+    }
+}
+
+// Get cart items for display
+$cartItems = [];
+$total = 0;
+
+try {
+    $stmt = $pdo->prepare("
+        SELECT 
+            c.menu_id as id,
+            m.name,
+            m.price,
+            m.image,
+            c.quantity,
+            m.stand_id as standId,
+            s.stand_name as standName
+        FROM cart c
+        JOIN menus m ON c.menu_id = m.id
+        JOIN stands s ON m.stand_id = s.id
+        WHERE c.user_id = ?
+    ");
+    $stmt->execute([$userId]);
+    $cartItems = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $total = array_sum(array_map(function($item) {
+        return $item['price'] * $item['quantity'];
+    }, $cartItems));
+} catch(PDOException $e) {
+    $error = "Gagal memuat keranjang: " . $e->getMessage();
+}
+?>
+
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -42,6 +208,7 @@
             justify-content: center;
             cursor: pointer;
             color: #6C4CF1;
+            text-decoration: none;
         }
         
         .header-title {
@@ -124,6 +291,10 @@
         .payment-option.selected {
             border-color: #6C4CF1;
             background: #f0f4ff;
+        }
+        
+        .payment-option input {
+            display: none;
         }
         
         .payment-icon {
@@ -262,6 +433,35 @@
             margin-top: 20px;
         }
         
+        .confirm-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .alert-success {
+            background: #D1FAE5;
+            color: #059669;
+            padding: 12px 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .alert-error {
+            background: #FEE2E2;
+            color: #DC2626;
+            padding: 12px 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .empty-cart {
+            text-align: center;
+            padding: 40px;
+            color: #6B7280;
+        }
+        
         .spinner {
             display: inline-block;
             width: 18px;
@@ -271,90 +471,107 @@
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
             margin-right: 8px;
+            vertical-align: middle;
         }
         
         @keyframes spin {
             to { transform: rotate(360deg); }
-        }
-        
-        .toast {
-            position: fixed;
-            bottom: 30px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #1a1a2e;
-            color: white;
-            padding: 10px 20px;
-            border-radius: 30px;
-            font-size: 0.8rem;
-            z-index: 1000;
         }
     </style>
 </head>
 <body>
     <div class="header">
         <div class="header-content">
-            <div class="back-btn" onclick="history.back()">
+            <a href="keranjang.php" class="back-btn">
                 <i class="fas fa-arrow-left"></i>
-            </div>
+            </a>
             <div class="header-title">💳 Checkout</div>
         </div>
     </div>
     
-    <div class="checkout-container" id="checkoutContainer">
-        <div class="form-section">
-            <div class="section-title">
-                <i class="fas fa-user" style="color:#6C4CF1;"></i> Informasi Pemesan
-            </div>
-            <div class="form-group">
-                <label>Nama Lengkap</label>
-                <input type="text" class="form-control" id="customerName" placeholder="Masukkan nama Anda">
-            </div>
-            <div class="form-group">
-                <label>Nomor Telepon</label>
-                <input type="tel" class="form-control" id="customerPhone" placeholder="Masukkan nomor telepon">
-            </div>
-            <div class="form-group">
-                <label>Nomor Meja (Opsional)</label>
-                <input type="text" class="form-control" id="tableNumber" placeholder="Nomor meja">
-            </div>
-            <div class="form-group">
-                <label>Catatan (Opsional)</label>
-                <textarea class="form-control" id="orderNotes" rows="2" placeholder="Catatan khusus untuk pesanan"></textarea>
-            </div>
-        </div>
+    <div class="checkout-container">
+        <?php if($message): ?>
+            <div class="alert-success"><?php echo htmlspecialchars($message); ?></div>
+        <?php endif; ?>
         
-        <div class="form-section">
-            <div class="section-title">
-                <i class="fas fa-credit-card" style="color:#6C4CF1;"></i> Metode Pembayaran
-            </div>
-            <div class="payment-methods" id="paymentMethods">
-                <div class="payment-option selected" data-method="cash">
-                    <div class="payment-icon"><i class="fas fa-money-bill"></i></div>
-                    <div>
-                        <div class="payment-name">Tunai</div>
-                        <div class="payment-desc">Bayar di kasir</div>
-                    </div>
-                </div>
-                <div class="payment-option" data-method="qris">
-                    <div class="payment-icon"><i class="fas fa-qrcode"></i></div>
-                    <div>
-                        <div class="payment-name">QRIS</div>
-                        <div class="payment-desc">Scan QR code dengan e-wallet</div>
-                    </div>
+        <?php if($error): ?>
+            <div class="alert-error"><?php echo htmlspecialchars($error); ?></div>
+        <?php endif; ?>
+        
+        <?php if(empty($cartItems)): ?>
+            <div class="form-section">
+                <div class="empty-cart">
+                    <i class="fas fa-shopping-cart" style="font-size: 3rem; margin-bottom: 16px; color: #9CA3AF;"></i>
+                    <p>Keranjang belanja kosong</p>
+                    <a href="index.php" style="display: inline-block; margin-top: 16px; color: #6C4CF1; text-decoration: none;">Lihat Menu →</a>
                 </div>
             </div>
-        </div>
-        
-        <div class="order-summary" id="orderSummary">
-            <div class="section-title">Ringkasan Pesanan</div>
-            <div class="order-items" id="orderItems"></div>
-            <div class="summary-row total">
-                <span>Total</span>
-                <span id="totalValue">Rp 0</span>
-            </div>
-            <button class="confirm-btn" id="confirmBtn">Konfirmasi Pesanan</button>
-        </div>
+        <?php else: ?>
+            <form method="POST" action="" id="checkoutForm">
+                <div class="form-section">
+                    <div class="section-title">
+                        <i class="fas fa-user" style="color:#6C4CF1;"></i> Informasi Pemesan
+                    </div>
+                    <div class="form-group">
+                        <label>Nama Lengkap *</label>
+                        <input type="text" class="form-control" name="customer_name" id="customerName" value="<?php echo htmlspecialchars($userName); ?>" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Nomor Telepon *</label>
+                        <input type="tel" class="form-control" name="customer_phone" id="customerPhone" value="<?php echo htmlspecialchars($userPhone); ?>" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Nomor Meja (Opsional)</label>
+                        <input type="text" class="form-control" name="table_number" id="tableNumber" placeholder="Nomor meja">
+                    </div>
+                    <div class="form-group">
+                        <label>Catatan (Opsional)</label>
+                        <textarea class="form-control" name="order_notes" id="orderNotes" rows="2" placeholder="Catatan khusus untuk pesanan"></textarea>
+                    </div>
+                </div>
+                
+                <div class="form-section">
+                    <div class="section-title">
+                        <i class="fas fa-credit-card" style="color:#6C4CF1;"></i> Metode Pembayaran
+                    </div>
+                    <div class="payment-methods">
+                        <label class="payment-option selected" data-method="cash">
+                            <input type="radio" name="payment_method" value="cash" checked hidden>
+                            <div class="payment-icon"><i class="fas fa-money-bill"></i></div>
+                            <div>
+                                <div class="payment-name">Tunai</div>
+                                <div class="payment-desc">Bayar di kasir</div>
+                            </div>
+                        </label>
+                        <label class="payment-option" data-method="qris">
+                            <input type="radio" name="payment_method" value="qris" hidden>
+                            <div class="payment-icon"><i class="fas fa-qrcode"></i></div>
+                            <div>
+                                <div class="payment-name">QRIS</div>
+                                <div class="payment-desc">Scan QR code dengan e-wallet</div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="order-summary">
+                    <div class="section-title">Ringkasan Pesanan</div>
+                    <div class="order-items">
+                        <?php foreach($cartItems as $item): ?>
+                        <div class="order-item">
+                            <span><?php echo $item['quantity']; ?>x <?php echo htmlspecialchars($item['name']); ?></span>
+                            <span>Rp <?php echo number_format($item['price'] * $item['quantity'], 0, ',', '.'); ?></span>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <div class="summary-row total">
+                        <span>Total</span>
+                        <span>Rp <?php echo number_format($total, 0, ',', '.'); ?></span>
+                    </div>
+                    <button type="submit" name="confirm_order" class="confirm-btn" id="confirmBtn">Konfirmasi Pesanan</button>
+                </div>
+            </form>
+        <?php endif; ?>
     </div>
     
     <!-- QRIS Modal -->
@@ -362,238 +579,63 @@
         <div class="qris-modal-content">
             <div class="qris-title">Scan QRIS untuk Membayar</div>
             <div class="qris-qr-code">
-                <img id="qrisImage" src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=QRIS_CaFood" alt="QR Code">
+                <img id="qrisImage" src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=QRIS_CaFood_<?php echo $total; ?>" alt="QR Code">
             </div>
-            <div class="qris-amount" id="qrisAmount">Rp 0</div>
+            <div class="qris-amount">Rp <?php echo number_format($total, 0, ',', '.'); ?></div>
             <div class="qris-instruction">
                 <i class="fas fa-mobile-alt"></i> Buka aplikasi e-wallet atau mobile banking<br>
                 Scan QR code di atas untuk melakukan pembayaran
             </div>
-            <button class="qris-close-btn" id="qrisConfirmBtn">Saya Sudah Bayar</button>
-            <button class="qris-close-btn" id="qrisCancelBtn" style="background:#6B7280; margin-top:8px;">Batal</button>
+            <button type="button" class="qris-close-btn" id="qrisConfirmBtn">Saya Sudah Bayar</button>
+            <button type="button" class="qris-close-btn" id="qrisCancelBtn" style="background:#6B7280; margin-top:8px;">Batal</button>
         </div>
     </div>
     
-    <script type="module">
-        import { db, auth, collection, getDocs, query, where, addDoc, deleteDoc, onAuthStateChanged } from './js/firebase-config.js';
-        
-        let currentUser = null;
-        let cartItems = [];
-        let selectedPayment = 'cash';
-        let isProcessing = false;
-        
-        function formatRupiah(price) {
-            return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(price);
-        }
-        
-        async function loadCart() {
-            if (!currentUser) {
-                window.location.href = 'login.php';
-                return;
-            }
-            
-            try {
-                const cartsRef = collection(db, "carts");
-                const q = query(cartsRef, where("userId", "==", currentUser.uid));
-                const snapshot = await getDocs(q);
-                
-                if (snapshot.empty) {
-                    window.location.href = 'keranjang.php';
-                    return;
-                }
-                
-                const itemsMap = new Map();
-                snapshot.docs.forEach(doc => {
-                    const data = doc.data();
-                    const menuId = data.menuId;
-                    if (itemsMap.has(menuId)) {
-                        itemsMap.get(menuId).quantity += data.quantity;
-                    } else {
-                        itemsMap.set(menuId, {
-                            id: menuId,
-                            name: data.menuName,
-                            price: data.menuPrice,
-                            image: data.menuImage,
-                            quantity: data.quantity,
-                            standId: data.standId,
-                            standName: data.standName
-                        });
-                    }
-                });
-                
-                cartItems = Array.from(itemsMap.values());
-                renderCheckout();
-            } catch (error) {
-                console.error("Error loading cart:", error);
-            }
-        }
-        
-        function renderCheckout() {
-            const total = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            
-            const orderItemsDiv = document.getElementById('orderItems');
-            orderItemsDiv.innerHTML = cartItems.map(item => `
-                <div class="order-item">
-                    <span>${item.quantity}x ${item.name}</span>
-                    <span>${formatRupiah(item.price * item.quantity)}</span>
-                </div>
-            `).join('');
-            
-            document.getElementById('totalValue').textContent = formatRupiah(total);
-            document.getElementById('qrisAmount').textContent = formatRupiah(total);
-            
-            const savedUser = localStorage.getItem('currentUser');
-            if (savedUser) {
-                const user = JSON.parse(savedUser);
-                document.getElementById('customerName').value = user.name || '';
-            }
-        }
-        
+    <script>
+        // Payment method selection
         document.querySelectorAll('.payment-option').forEach(opt => {
             opt.addEventListener('click', function() {
                 document.querySelectorAll('.payment-option').forEach(o => o.classList.remove('selected'));
                 this.classList.add('selected');
-                selectedPayment = this.dataset.method;
+                const radio = this.querySelector('input[type="radio"]');
+                if (radio) radio.checked = true;
             });
         });
         
-        function generateOrderNumber() {
-            return 'ORD-' + Date.now().toString().slice(-8);
+        // QRIS Modal handling
+        const qrisModal = document.getElementById('qrisModal');
+        const qrisConfirmBtn = document.getElementById('qrisConfirmBtn');
+        const qrisCancelBtn = document.getElementById('qrisCancelBtn');
+        const checkoutForm = document.getElementById('checkoutForm');
+        const confirmBtn = document.getElementById('confirmBtn');
+        
+        if (checkoutForm) {
+            checkoutForm.addEventListener('submit', function(e) {
+                const selectedPayment = document.querySelector('input[name="payment_method"]:checked');
+                if (selectedPayment && selectedPayment.value === 'qris') {
+                    e.preventDefault();
+                    qrisModal.style.display = 'flex';
+                }
+            });
         }
         
-        function generateQueueNumber() {
-            return Math.floor(Math.random() * 50) + 1;
-        }
-        
-        async function clearCart() {
-            const cartsRef = collection(db, "carts");
-            const q = query(cartsRef, where("userId", "==", currentUser.uid));
-            const snapshot = await getDocs(q);
-            const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
-            await Promise.all(deletePromises);
-        }
-        
-        function openQrisModal() {
-            document.getElementById('qrisModal').style.display = 'flex';
-        }
-        
-        function closeQrisModal() {
-            document.getElementById('qrisModal').style.display = 'none';
-        }
-        
-        async function saveOrder() {
-            if (isProcessing) return;
-            isProcessing = true;
-            
-            const confirmBtn = document.getElementById('confirmBtn');
-            confirmBtn.innerHTML = '<span class="spinner"></span> Memproses...';
-            confirmBtn.disabled = true;
-            
-            const customerName = document.getElementById('customerName').value.trim();
-            const customerPhone = document.getElementById('customerPhone').value.trim();
-            
-            if (!customerName || !customerPhone) {
-                alert('Mohon isi nama dan nomor telepon Anda!');
-                confirmBtn.innerHTML = 'Konfirmasi Pesanan';
-                confirmBtn.disabled = false;
-                isProcessing = false;
-                return;
+        qrisConfirmBtn.addEventListener('click', function() {
+            qrisModal.style.display = 'none';
+            if (checkoutForm) {
+                confirmBtn.innerHTML = '<span class="spinner"></span> Memproses...';
+                confirmBtn.disabled = true;
+                checkoutForm.submit();
             }
-            
-            const total = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            const estimatedTime = 15;
-            const queueNumber = generateQueueNumber();
-            const orderNumber = generateOrderNumber();
-            
-            const paymentNames = {
-                'cash': 'Tunai',
-                'qris': 'QRIS'
-            };
-            
-            const orderData = {
-                orderNumber: orderNumber,
-                queueNumber: queueNumber,
-                customerName: customerName,
-                customerPhone: customerPhone,
-                tableNumber: document.getElementById('tableNumber').value || '-',
-                notes: document.getElementById('orderNotes').value,
-                standId: cartItems[0]?.standId,
-                standName: cartItems[0]?.standName,
-                items: cartItems.map(item => ({
-                    id: item.id,
-                    name: item.name,
-                    price: item.price,
-                    quantity: item.quantity,
-                    subtotal: item.price * item.quantity
-                })),
-                total: total,
-                paymentMethod: paymentNames[selectedPayment] || 'Tunai',
-                estimatedTime: estimatedTime,
-                userId: currentUser?.uid,
-                status: 'pending',
-                createdAt: new Date().toISOString()
-            };
-            
-            try {
-                const ordersRef = collection(db, "orders");
-                await addDoc(ordersRef, orderData);
-                await clearCart();
-                localStorage.setItem('currentOrder', JSON.stringify(orderData));
-                
-                showToast('✅ Pesanan berhasil dibuat!');
-                
-                setTimeout(() => {
-                    window.location.href = 'status-pesanan.php';
-                }, 1500);
-            } catch (error) {
-                console.error("Error saving order:", error);
-                alert('Gagal membuat pesanan. Silakan coba lagi.');
-                confirmBtn.innerHTML = 'Konfirmasi Pesanan';
-                confirmBtn.disabled = false;
-                isProcessing = false;
-            }
-        }
-        
-        async function confirmOrder() {
-            const customerName = document.getElementById('customerName').value.trim();
-            const customerPhone = document.getElementById('customerPhone').value.trim();
-            
-            if (!customerName || !customerPhone) {
-                alert('Mohon isi nama dan nomor telepon Anda!');
-                return;
-            }
-            
-            if (selectedPayment === 'qris') {
-                openQrisModal();
-                return;
-            }
-            
-            await saveOrder();
-        }
-        
-        function showToast(message) {
-            const toast = document.createElement('div');
-            toast.className = 'toast';
-            toast.style.background = '#10B981';
-            toast.innerHTML = `<i class="fas fa-check-circle"></i> ${message}`;
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 2000);
-        }
-        
-        // Event listeners
-        document.getElementById('confirmBtn').addEventListener('click', confirmOrder);
-        document.getElementById('qrisConfirmBtn').addEventListener('click', async () => {
-            closeQrisModal();
-            await saveOrder();
         });
-        document.getElementById('qrisCancelBtn').addEventListener('click', closeQrisModal);
         
-        onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                currentUser = user;
-                await loadCart();
-            } else {
-                window.location.href = 'login.php';
+        qrisCancelBtn.addEventListener('click', function() {
+            qrisModal.style.display = 'none';
+        });
+        
+        // Close modal when clicking outside
+        qrisModal.addEventListener('click', function(e) {
+            if (e.target === qrisModal) {
+                qrisModal.style.display = 'none';
             }
         });
     </script>

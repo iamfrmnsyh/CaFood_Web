@@ -62,6 +62,34 @@ if ($isLoggedIn) {
     $cartCount = $result['total'] ?? 0;
 }
 
+// ===== HITUNG NOTIFIKASI CHAT UNTUK SIDEBAR =====
+$chatNotifCount = 0;
+if ($isLoggedIn) {
+    try {
+        if ($userRole === 'stand') {
+            $stmt = $pdo->prepare("
+                SELECT COUNT(cn.id) as total 
+                FROM chat_notifications cn 
+                JOIN chat_rooms cr ON cn.room_id = cr.id 
+                JOIN stands s ON cr.stand_id = s.id 
+                WHERE s.user_id = ? AND cn.user_id = ? AND cn.is_read = 0
+            ");
+            $stmt->execute([$currentUser, $currentUser]);
+        } else {
+            $stmt = $pdo->prepare("
+                SELECT COUNT(cn.id) as total 
+                FROM chat_notifications cn 
+                WHERE cn.user_id = ? AND cn.is_read = 0
+            ");
+            $stmt->execute([$currentUser]);
+        }
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        $chatNotifCount = $result['total'] ?? 0;
+    } catch (PDOException $e) {
+        $chatNotifCount = 0;
+    }
+}
+
 // Handle logout
 if (isset($_GET['logout'])) {
     session_destroy();
@@ -270,6 +298,7 @@ function formatRupiah($price) {
             border-left: 3px solid transparent;
             text-decoration: none;
             font-weight: 500;
+            position: relative;
         }
         
         .side-menu-item:hover {
@@ -279,6 +308,24 @@ function formatRupiah($price) {
         }
         
         .side-menu-item i { width: 24px; font-size: 1.1rem; }
+        
+        /* ===== BADGE NOTIFIKASI DI SIDEBAR ===== */
+        .badge-notif {
+            background: #ef4444;
+            color: white;
+            font-size: 0.6rem;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 20px;
+            margin-left: auto;
+            animation: pulse-badge 2s infinite;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        @keyframes pulse-badge {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
         
         .side-menu-footer {
             padding: 20px;
@@ -655,16 +702,43 @@ function formatRupiah($price) {
             <a href="index.php" class="side-menu-item">
                 <i class="fas fa-home"></i> <span>Beranda</span>
             </a>
+            
             <?php if($isLoggedIn): ?>
+            <!-- ===== MENU PESANAN SAYA ===== -->
             <a href="status-pesanan.php" class="side-menu-item">
                 <i class="fas fa-clipboard-list"></i> <span>Pesanan Saya</span>
             </a>
+            
+            <!-- ===== MENU KERANJANG ===== -->
             <a href="keranjang.php" class="side-menu-item">
                 <i class="fas fa-shopping-cart"></i> <span>Keranjang</span>
             </a>
+            
+            <!-- ===== MENU PROFIL ===== -->
             <a href="profile.php" class="side-menu-item">
                 <i class="fas fa-user"></i> <span>Profil Saya</span>
             </a>
+            
+            <!-- ===== MENU CHAT DENGAN BADGE NOTIFIKASI ===== -->
+            <?php 
+            // Tentukan link chat berdasarkan role
+            if ($userRole == 'stand') {
+                $chatLink = 'chat_stand.php';
+            } elseif ($userRole == 'admin') {
+                $chatLink = 'chat_admin.php';
+            } else {
+                $chatLink = 'chat_list.php';
+            }
+            ?>
+            <a href="<?php echo $chatLink; ?>" class="side-menu-item">
+                <i class="fas fa-comment-dots"></i> 
+                <span>Pesan</span>
+                <?php if($chatNotifCount > 0): ?>
+                    <span class="badge-notif"><?php echo $chatNotifCount > 9 ? '9+' : $chatNotifCount; ?></span>
+                <?php endif; ?>
+            </a>
+            
+            <!-- ===== MENU DASHBOARD ===== -->
             <?php if($userRole == 'stand'): ?>
             <a href="dashboard-stand.php" class="side-menu-item">
                 <i class="fas fa-tachometer-alt"></i> <span>Dashboard Stand</span>
@@ -674,7 +748,9 @@ function formatRupiah($price) {
                 <i class="fas fa-tachometer-alt"></i> <span>Dashboard Admin</span>
             </a>
             <?php endif; ?>
+            
             <?php else: ?>
+            <!-- ===== MENU UNTUK TAMU ===== -->
             <a href="login.php" class="side-menu-item">
                 <i class="fas fa-sign-in-alt"></i> <span>Login</span>
             </a>
@@ -807,129 +883,7 @@ function formatRupiah($price) {
         const searchInput = document.getElementById('searchInput');
         const searchClearBtn = document.getElementById('searchClearBtn');
         
-        // PERBAIKAN UTAMA: Fungsi pencarian TANPA menghilangkan fokus
-        let searchTimeout;
-        let isNavigating = false;
-        
-        function performSearch(query, shouldRefocus = true) {
-            if (isNavigating) return;
-            
-            const currentQuery = query.trim();
-            const currentUrl = window.location.href;
-            const hasSearchParam = currentUrl.includes('?search=');
-            
-            // Cek apakah perlu redirect
-            let needRedirect = false;
-            let newUrl = '';
-            
-            if (currentQuery.length > 0) {
-                // Jika ada query dan tidak sama dengan yang sedang aktif
-                if (!hasSearchParam || !currentUrl.includes(encodeURIComponent(currentQuery))) {
-                    needRedirect = true;
-                    newUrl = `index.php?search=${encodeURIComponent(currentQuery)}`;
-                }
-            } else if (currentQuery.length === 0 && hasSearchParam) {
-                // Jika query kosong dan sedang dalam mode pencarian
-                needRedirect = true;
-                newUrl = 'index.php';
-            }
-            
-            if (needRedirect) {
-                isNavigating = true;
-                
-                // Simpan posisi scroll dan fokus
-                const scrollPosition = window.scrollY;
-                const inputValue = searchInput ? searchInput.value : '';
-                
-                // Redirect ke URL baru
-                window.location.href = newUrl;
-                
-                // Kembalikan fokus setelah page load
-                if (shouldRefocus && searchInput) {
-                    setTimeout(() => {
-                        if (searchInput) {
-                            searchInput.focus();
-                            // Pindahkan kursor ke akhir teks
-                            const len = searchInput.value.length;
-                            searchInput.setSelectionRange(len, len);
-                        }
-                        isNavigating = false;
-                    }, 100);
-                } else {
-                    setTimeout(() => {
-                        isNavigating = false;
-                    }, 100);
-                }
-            }
-        }
-        
-        // Fungsi untuk clear search
-        function clearSearch() {
-            if (searchInput) {
-                searchInput.value = '';
-                if (searchClearBtn) searchClearBtn.style.display = 'none';
-                
-                // Hapus parameter search dari URL
-                const urlParams = new URLSearchParams(window.location.search);
-                if (urlParams.has('search')) {
-                    urlParams.delete('search');
-                    const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
-                    window.location.href = newUrl;
-                }
-            }
-        }
-        
-        // PERBAIKAN: Handler untuk search input - tetap fokus setelah search
-        if (searchInput) {
-            // Fungsi untuk toggle tombol clear
-            function toggleClearButton() {
-                if (searchClearBtn) {
-                    searchClearBtn.style.display = searchInput.value.length > 0 ? 'block' : 'none';
-                }
-            }
-            
-            // Initial check
-            toggleClearButton();
-            
-            // Event listener untuk input dengan debounce yang lebih baik
-            searchInput.addEventListener('input', function(e) {
-                toggleClearButton();
-                
-                // Clear timeout sebelumnya
-                clearTimeout(searchTimeout);
-                
-                const query = this.value;
-                
-                // Debounce search untuk menghindari terlalu banyak request
-                searchTimeout = setTimeout(() => {
-                    // PENTING: Perform search tanpa kehilangan fokus
-                    performSearch(query, true);
-                }, 800); // Debounce 800ms untuk UX lebih baik
-            });
-            
-            // Search on Enter key - tetap fokus setelahnya
-            searchInput.addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    clearTimeout(searchTimeout);
-                    performSearch(this.value, true);
-                }
-            });
-            
-            // PERBAIKAN: Pastikan input tetap fokus setelah page load
-            window.addEventListener('load', function() {
-                if (searchInput) {
-                    searchInput.focus();
-                    // Pindahkan kursor ke akhir teks jika ada nilai
-                    if (searchInput.value.length > 0) {
-                        const len = searchInput.value.length;
-                        searchInput.setSelectionRange(len, len);
-                    }
-                }
-            });
-        }
-        
-        // Sidebar functions
+        // ===== SIDEBAR FUNCTIONS =====
         function openSidebar() {
             sideMenu.classList.add('open');
             overlay.classList.add('active');
@@ -967,7 +921,7 @@ function formatRupiah($price) {
             if (e.key === 'Escape' && sideMenu.classList.contains('open')) {
                 closeSidebar();
             }
-            // PERBAIKAN: Shortcut Ctrl+K atau Cmd+K untuk fokus ke search
+            // Shortcut Ctrl+K atau Cmd+K untuk fokus ke search
             if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
                 e.preventDefault();
                 if (searchInput) {
@@ -977,6 +931,93 @@ function formatRupiah($price) {
             }
         });
         
+        // ===== SEARCH FUNCTIONS =====
+        let searchTimeout;
+        let isNavigating = false;
+        
+        function performSearch(query, shouldRefocus = true) {
+            if (isNavigating) return;
+            
+            const currentQuery = query.trim();
+            const currentUrl = window.location.href;
+            const hasSearchParam = currentUrl.includes('?search=');
+            
+            let needRedirect = false;
+            let newUrl = '';
+            
+            if (currentQuery.length > 0) {
+                if (!hasSearchParam || !currentUrl.includes(encodeURIComponent(currentQuery))) {
+                    needRedirect = true;
+                    newUrl = `index.php?search=${encodeURIComponent(currentQuery)}`;
+                }
+            } else if (currentQuery.length === 0 && hasSearchParam) {
+                needRedirect = true;
+                newUrl = 'index.php';
+            }
+            
+            if (needRedirect) {
+                isNavigating = true;
+                window.location.href = newUrl;
+                setTimeout(() => {
+                    isNavigating = false;
+                }, 100);
+            }
+        }
+        
+        function clearSearch() {
+            if (searchInput) {
+                searchInput.value = '';
+                if (searchClearBtn) searchClearBtn.style.display = 'none';
+                
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.has('search')) {
+                    urlParams.delete('search');
+                    const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+                    window.location.href = newUrl;
+                }
+            }
+        }
+        
+        // ===== SEARCH INPUT HANDLING =====
+        if (searchInput) {
+            function toggleClearButton() {
+                if (searchClearBtn) {
+                    searchClearBtn.style.display = searchInput.value.length > 0 ? 'block' : 'none';
+                }
+            }
+            
+            toggleClearButton();
+            
+            searchInput.addEventListener('input', function(e) {
+                toggleClearButton();
+                clearTimeout(searchTimeout);
+                const query = this.value;
+                searchTimeout = setTimeout(() => {
+                    performSearch(query, true);
+                }, 800);
+            });
+            
+            searchInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    clearTimeout(searchTimeout);
+                    performSearch(this.value, true);
+                }
+            });
+            
+            // Pastikan input tetap fokus
+            window.addEventListener('load', function() {
+                if (searchInput) {
+                    searchInput.focus();
+                    if (searchInput.value.length > 0) {
+                        const len = searchInput.value.length;
+                        searchInput.setSelectionRange(len, len);
+                    }
+                }
+            });
+        }
+        
+        // ===== NAVIGATION =====
         function goToStand(standId) {
             window.location.href = `menu-stand.php?id=${standId}`;
         }
@@ -985,6 +1026,7 @@ function formatRupiah($price) {
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
         
+        // ===== GREETING =====
         function updateGreeting() {
             const hour = new Date().getHours();
             let greeting = "";
@@ -1013,7 +1055,7 @@ function formatRupiah($price) {
         updateGreeting();
         setInterval(updateGreeting, 60000);
         
-        // Highlight search term in results
+        // ===== HIGHLIGHT SEARCH TERM =====
         <?php if(!empty($originalSearchQuery)): ?>
         function highlightSearchTerm() {
             const searchTerm = "<?php echo addslashes($originalSearchQuery); ?>".toLowerCase();
@@ -1039,7 +1081,7 @@ function formatRupiah($price) {
         }
         <?php endif; ?>
         
-        // PERBAIKAN: Prevent form submission jika ada form di sekitar
+        // ===== PREVENT FORM SUBMISSION =====
         const searchBar = document.querySelector('.search-bar');
         if (searchBar) {
             searchBar.addEventListener('submit', function(e) {

@@ -307,6 +307,66 @@ function formatRupiah($price) {
             border: 2px solid white; 
             transition: all 0.2s;
         }
+
+        /* ===== TOMBOL CHAT ===== */
+        /* Tombol chat di pojok kanan atas, di samping keranjang */
+        .chat-btn {
+            position: absolute;
+            top: 20px;
+            right: 80px;
+            width: 40px;
+            height: 40px;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(8px);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.2rem;
+            cursor: pointer;
+            z-index: 10;
+            text-decoration: none;
+            border: 1px solid rgba(255,255,255,0.3);
+            transition: all 0.3s;
+        }
+        
+        .chat-btn:hover {
+            background: rgba(0,0,0,0.6);
+            transform: scale(1.05);
+            color: #fff;
+        }
+        
+        .chat-btn i {
+            font-size: 1.2rem;
+        }
+        
+        /* Chat button untuk mobile */
+        @media (max-width: 768px) {
+            .chat-btn {
+                top: 12px;
+                right: 65px;
+                width: 36px;
+                height: 36px;
+                font-size: 1rem;
+            }
+            .chat-btn i {
+                font-size: 1rem;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .chat-btn {
+                top: 10px;
+                right: 55px;
+                width: 32px;
+                height: 32px;
+                font-size: 0.85rem;
+            }
+            .chat-btn i {
+                font-size: 0.85rem;
+            }
+        }
         
         .stand-info-card { 
             background: white; 
@@ -624,6 +684,14 @@ function formatRupiah($price) {
 <body>
     <div class="stand-header">
         <a href="javascript:history.back()" class="back-btn">←</a>
+        
+        <!-- ===== TOMBOL CHAT ===== -->
+        <?php if($isLoggedIn && $userId != $stand['user_id']): ?>
+        <a href="chat.php?stand_id=<?php echo $standId; ?>" class="chat-btn" title="Chat dengan pemilik stand">
+            <i class="fas fa-comment-dots"></i>
+        </a>
+        <?php endif; ?>
+        
         <a href="keranjang.php" class="cart-icon-header">
             <i class="fas fa-shopping-cart"></i>
             <span class="cart-count-badge" id="cartCountBadge"><?php echo $totalItems; ?></span>

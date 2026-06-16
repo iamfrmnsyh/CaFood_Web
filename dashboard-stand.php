@@ -83,13 +83,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_menu'])) {
                 if (move_uploaded_file($fileTmp, $targetFile)) {
                     $imagePath = 'uploads/menus/' . $filename;
                     $hasNewImage = true;
-                    
-                    // Optional: Resize gambar jika terlalu besar (kompres)
-                    // Ini akan membantu loading website lebih cepat
-                    $imageInfo = getimagesize($targetFile);
-                    if ($imageInfo && $file['size'] > 1024 * 1024) { // Jika lebih dari 1MB, kompres
-                        compressImage($targetFile, $targetFile, 80);
-                    }
                 } else {
                     $errorMessage = "Gagal mengupload gambar!";
                 }
@@ -139,22 +132,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_menu'])) {
             $errorMessage = "Gagal menyimpan menu: " . $e->getMessage();
         }
     }
-}
-
-// Fungsi untuk kompres gambar (opsional, membantu loading lebih cepat)
-function compressImage($source, $destination, $quality) {
-    $info = getimagesize($source);
-    if ($info['mime'] == 'image/jpeg') {
-        $image = imagecreatefromjpeg($source);
-        imagejpeg($image, $destination, $quality);
-    } elseif ($info['mime'] == 'image/png') {
-        $image = imagecreatefrompng($source);
-        imagepng($image, $destination, 8);
-    } elseif ($info['mime'] == 'image/webp') {
-        $image = imagecreatefromwebp($source);
-        imagewebp($image, $destination, $quality);
-    }
-    return $destination;
 }
 
 // Update Order Status
@@ -343,6 +320,24 @@ if (isset($_GET['logout'])) {
     header('Location: login.php');
     exit;
 }
+
+// ========== HITUNG PESAN CHAT BELUM DIBACA UNTUK BADGE ==========
+$unreadChatCount = 0;
+try {
+    // Hitung notifikasi chat yang belum dibaca untuk stand ini
+    $stmt = $pdo->prepare("
+        SELECT COUNT(cn.id) as total 
+        FROM chat_notifications cn 
+        JOIN chat_rooms cr ON cn.room_id = cr.id 
+        WHERE cr.stand_id = ? AND cn.user_id = ? AND cn.is_read = 0
+    ");
+    $stmt->execute([$standId, $userId]);
+    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    $unreadChatCount = $result['total'] ?? 0;
+} catch(PDOException $e) {
+    // Jika tabel chat_notifications belum ada, abaikan
+    $unreadChatCount = 0;
+}
 ?>
 
 <!DOCTYPE html>
@@ -421,6 +416,7 @@ if (isset($_GET['logout'])) {
             border-radius: 12px;
             text-decoration: none;
             color: rgba(255,255,255,0.75);
+            position: relative;
         }
 
         .menu-item:hover {
@@ -437,6 +433,25 @@ if (isset($_GET['logout'])) {
         .menu-item i {
             width: 24px;
             font-size: 1.2rem;
+        }
+
+        /* ===== BADGE UNTUK NOTIFIKASI CHAT ===== */
+        .menu-badge {
+            background: #ef4444;
+            color: white;
+            font-size: 0.65rem;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 20px;
+            margin-left: auto;
+            min-width: 20px;
+            text-align: center;
+            line-height: 1.4;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .menu-badge.zero {
+            display: none;
         }
 
         .main-content {
@@ -877,6 +892,15 @@ if (isset($_GET['logout'])) {
             </a>
             <a href="?tab=reports" class="menu-item <?php echo $activeTab == 'reports' ? 'active' : ''; ?>">
                 <i class="fas fa-chart-bar"></i> <span>Laporan</span>
+            </a>
+            
+            <!-- ===== MENU CHAT DENGAN BADGE ===== -->
+            <a href="chat_stand.php" class="menu-item <?php echo $activeTab == 'chat' ? 'active' : ''; ?>">
+                <i class="fas fa-comment-dots"></i> 
+                <span>Pesan Masuk</span>
+                <span class="menu-badge <?php echo $unreadChatCount <= 0 ? 'zero' : ''; ?>">
+                    <?php echo $unreadChatCount > 0 ? $unreadChatCount : '0'; ?>
+                </span>
             </a>
         </div>
     </div>
